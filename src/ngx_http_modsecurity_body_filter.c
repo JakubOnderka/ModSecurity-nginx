@@ -50,11 +50,12 @@ ngx_http_modsecurity_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         return ngx_http_next_body_filter(r, in);
     }
 
-    ctx = ngx_http_get_module_ctx(r, ngx_http_modsecurity_module);
+    ctx = ngx_http_modsecurity_get_module_ctx(r);
 
     dd("body filter, recovering ctx: %p", ctx);
 
     if (ctx == NULL) {
+        dd("ModSecurity not enabled or an error occured");
         return ngx_http_next_body_filter(r, in);
     }
 
@@ -147,7 +148,7 @@ ngx_http_modsecurity_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         int ret;
 
         msc_append_response_body(ctx->modsec_transaction, data, chain->buf->last - data);
-        ret = ngx_http_modsecurity_process_intervention(ctx->modsec_transaction, r, 0);
+        ret = ngx_http_modsecurity_process_intervention(ctx->modsec_transaction, r);
         if (ret > 0) {
             return ngx_http_filter_finalize_request(r,
                 &ngx_http_modsecurity_module, ret);
@@ -165,7 +166,7 @@ ngx_http_modsecurity_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
 /* XXX: I don't get how body from modsec being transferred to nginx's buffer.  If so - after adjusting of nginx's
    XXX: body we can proceed to adjust body size (content-length).  see xslt_body_filter() for example */
-            ret = ngx_http_modsecurity_process_intervention(ctx->modsec_transaction, r, 0);
+            ret = ngx_http_modsecurity_process_intervention(ctx->modsec_transaction, r);
             if (ret > 0) {
                 return ret;
             }
