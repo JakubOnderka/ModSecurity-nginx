@@ -867,7 +867,7 @@ ngx_http_modsecurity_status_variable(ngx_http_request_t *r,
 {
     ngx_http_modsecurity_ctx_t  *ctx;
 
-    ctx = ngx_http_get_module_ctx(r, ngx_http_modsecurity_module);
+    ctx = ngx_http_modsecurity_get_module_ctx(r);
     if (ctx == NULL || ctx->status == 0) {
         v->not_found = 1;
         return NGX_OK;
