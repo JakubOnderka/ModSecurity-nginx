@@ -526,7 +526,7 @@ ngx_http_modsecurity_header_filter(ngx_http_request_t *r)
             break;
 #endif
 #ifdef NGX_HTTP_VERSION_20
-        case NGX_HTTP_VERSION_30 :
+        case NGX_HTTP_VERSION_20 :
             http_response_ver = "HTTP 2.0";
             break;
 #endif
