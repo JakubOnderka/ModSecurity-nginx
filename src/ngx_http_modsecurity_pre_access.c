@@ -193,7 +193,7 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
              * it may ask for a intervention in consequence of that.
              *
              */
-            ret = ngx_http_modsecurity_process_intervention(ctx->modsec_transaction, r);
+            ret = ngx_http_modsecurity_process_intervention(ctx, r);
             if (ret > 0) {
                 return ret;
             }
@@ -213,7 +213,7 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
         ctx->request_body_processed = 1;
         ngx_http_modsecurity_pcre_malloc_done(old_pool);
 
-        ret = ngx_http_modsecurity_process_intervention(ctx->modsec_transaction, r);
+        ret = ngx_http_modsecurity_process_intervention(ctx, r);
         if (r->error_page) {
             return NGX_DECLINED;
             }

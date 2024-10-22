@@ -140,24 +140,20 @@ ngx_inline char *ngx_str_to_char(ngx_str_t a, ngx_pool_t *p)
 
 
 int
-ngx_http_modsecurity_process_intervention (Transaction *transaction, ngx_http_request_t *r)
+ngx_http_modsecurity_process_intervention (ngx_http_modsecurity_ctx_t *ctx, ngx_http_request_t *r)
 {
     char *log = NULL;
     ModSecurityIntervention intervention;
+    Transaction *transaction;
     intervention.status = 200;
     intervention.url = NULL;
     intervention.log = NULL;
     intervention.disruptive = 0;
-    ngx_http_modsecurity_ctx_t *ctx = NULL;
     ngx_http_modsecurity_conf_t  *mcf;
 
     dd("processing intervention");
 
-    ctx = ngx_http_modsecurity_get_module_ctx(r);
-    if (ctx == NULL)
-    {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
+    transaction = ctx->modsec_transaction;
 
     if (msc_intervention(transaction, &intervention) == 0) {
         dd("nothing to do");
