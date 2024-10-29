@@ -216,13 +216,12 @@ ngx_http_modsecurity_resolv_header_content_length(ngx_http_request_t *r, ngx_str
     ngx_str_t value;
     char buf[NGX_INT64_LEN+2];
 
-    ctx = ngx_http_modsecurity_get_module_ctx(r);
-
     if (r->headers_out.content_length_n > 0)
     {
-        ngx_sprintf((u_char *)buf, "%O%Z", r->headers_out.content_length_n);
+        ctx = ngx_http_modsecurity_get_module_ctx(r);
+
+        value.len = ngx_sprintf((u_char *)buf, "%O%Z", r->headers_out.content_length_n) - buf;
         value.data = (unsigned char *)buf;
-        value.len = strlen(buf);
 
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
         ngx_http_modsecurity_store_ctx_header(r, &name, &value);
@@ -243,10 +242,9 @@ ngx_http_modsecurity_resolv_header_content_type(ngx_http_request_t *r, ngx_str_t
 {
     ngx_http_modsecurity_ctx_t *ctx = NULL;
 
-    ctx = ngx_http_modsecurity_get_module_ctx(r);
-
     if (r->headers_out.content_type.len > 0)
     {
+        ctx = ngx_http_modsecurity_get_module_ctx(r);
 
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
         ngx_http_modsecurity_store_ctx_header(r, &name, &r->headers_out.content_type);
@@ -267,10 +265,8 @@ static ngx_int_t
 ngx_http_modsecurity_resolv_header_last_modified(ngx_http_request_t *r, ngx_str_t name, off_t offset)
 {
     ngx_http_modsecurity_ctx_t *ctx = NULL;
-    u_char buf[1024], *p;
+    u_char buf[sizeof("Mon, 28 Sep 1970 06:00:00 GMT")], *p;
     ngx_str_t value;
-
-    ctx = ngx_http_modsecurity_get_module_ctx(r);
 
     if (r->headers_out.last_modified_time == -1) {
         return 1;
@@ -280,6 +276,8 @@ ngx_http_modsecurity_resolv_header_last_modified(ngx_http_request_t *r, ngx_str_
 
     value.data = buf;
     value.len = (int)(p-buf);
+
+    ctx = ngx_http_modsecurity_get_module_ctx(r);
 
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
     ngx_http_modsecurity_store_ctx_header(r, &name, &value);
