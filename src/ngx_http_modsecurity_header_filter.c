@@ -220,7 +220,7 @@ ngx_http_modsecurity_resolv_header_content_length(ngx_http_request_t *r, ngx_str
     {
         ctx = ngx_http_modsecurity_get_module_ctx(r);
 
-        value.len = (int)(ngx_sprintf((u_char *)buf, "%O%Z", r->headers_out.content_length_n) - buf);
+        value.len = (int)(ngx_sprintf((u_char *)buf, "%O%Z", r->headers_out.content_length_n) - (u_char *)buf);
         value.data = (unsigned char *)buf;
 
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
