@@ -63,7 +63,7 @@ jobs:
         working-directory: nginx
         run: |
           ./auto/configure --with-ld-opt="-Wl,-rpath,/usr/local/lib" --without-pcre2 --with-http_v2_module --with-http_auth_request_module --add-module=../ModSecurity-nginx
-          make
+          make -j $(nproc)
           make modules
           sudo make install
       - name: Run ModSecurity-nginx tests
