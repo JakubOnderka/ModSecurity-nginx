@@ -296,16 +296,17 @@ ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_str_t n
 {
     ngx_http_modsecurity_ctx_t *ctx = NULL;
     ngx_http_core_loc_conf_t *clcf = NULL;
-    char *connection = NULL;
+    ngx_str_t connection;
     ngx_str_t value;
 
-    clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
     ctx = ngx_http_modsecurity_get_module_ctx(r);
 
     if (r->headers_out.status == NGX_HTTP_SWITCHING_PROTOCOLS) {
-        connection = "upgrade";
+        connection = ngx_string("upgrade");
     } else if (r->keepalive) {
-        connection = "keep-alive";
+        connection = ngx_string("keep-alive");
+
+        clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
         if (clcf->keepalive_header)
         {
             u_char buf[1024];
@@ -326,21 +327,18 @@ ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_str_t n
                 value.len);
         }
     } else {
-        connection = "close";
+        connection = ngx_string("close");
     }
 
-    value.data = (u_char *) connection;
-    value.len = strlen(connection);
-
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
-    ngx_http_modsecurity_store_ctx_header(r, &name, &value);
+    ngx_http_modsecurity_store_ctx_header(r, &name, &connection);
 #endif
 
     return msc_add_n_response_header(ctx->modsec_transaction,
         (const unsigned char *) name.data,
         name.len,
-        (const unsigned char *) value.data,
-        value.len);
+        (const unsigned char *) connection.data,
+        connection.len);
 }
 
 static ngx_int_t
