@@ -471,9 +471,9 @@ ngx_http_modsecurity_header_filter(ngx_http_request_t *r)
             (int) ngx_http_modsecurity_headers_out[i].name.len,
             ngx_http_modsecurity_headers_out[i].name.data);
 
-                ngx_http_modsecurity_headers_out[i].resolver(r,
-                    ngx_http_modsecurity_headers_out[i].name,
-                    ngx_http_modsecurity_headers_out[i].offset);
+        ngx_http_modsecurity_headers_out[i].resolver(r,
+            ngx_http_modsecurity_headers_out[i].name,
+            ngx_http_modsecurity_headers_out[i].offset);
     }
 
     for (i = 0 ;; i++)
