@@ -290,6 +290,10 @@ ngx_http_modsecurity_resolv_header_last_modified(ngx_http_request_t *r, ngx_str_
         value.len);
 }
 
+static ngx_str_t ngx_http_modsecurity_connection_close = ngx_string("close");
+static ngx_str_t ngx_http_modsecurity_connection_upgrade = ngx_string("upgrade");
+static ngx_str_t ngx_http_modsecurity_connection_keepalive = ngx_string("keep-alive");
+
 
 static ngx_int_t
 ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_str_t name, off_t offset)
@@ -302,9 +306,9 @@ ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_str_t n
     ctx = ngx_http_modsecurity_get_module_ctx(r);
 
     if (r->headers_out.status == NGX_HTTP_SWITCHING_PROTOCOLS) {
-        connection = ngx_string("upgrade");
+        connection = ngx_http_modsecurity_connection_upgrade;
     } else if (r->keepalive) {
-        connection = ngx_string("keep-alive");
+        connection = ngx_http_modsecurity_connection_keepalive;
 
         clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
         if (clcf->keepalive_header)
@@ -327,7 +331,7 @@ ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_str_t n
                 value.len);
         }
     } else {
-        connection = ngx_string("close");
+        connection = ngx_http_modsecurity_connection_close;
     }
 
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
