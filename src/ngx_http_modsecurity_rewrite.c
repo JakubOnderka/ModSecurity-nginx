@@ -86,27 +86,21 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
 
+        // Convert local address to server_addr with null termination
         ngx_str_t s;
-        u_char addr[NGX_SOCKADDR_STRLEN];
-        s.len = NGX_SOCKADDR_STRLEN;
-        s.data = addr;
+        u_char server_addr[NGX_SOCKADDR_STRLEN + 1];
+        s.len = 0;
+        s.data = server_addr;
         if (ngx_connection_local_sockaddr(r->connection, &s, 0) != NGX_OK) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
-
-        const char *server_addr = ngx_str_to_char(s, r->pool);
-        if (server_addr == (char*)-1) {
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
+        server_addr[s.len] = '\0';
 
         old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
-        ret = msc_process_connection(ctx->modsec_transaction,
+        msc_process_connection(ctx->modsec_transaction,
             client_addr, client_port,
-            server_addr, server_port);
+            (const char *) server_addr, server_port);
         ngx_http_modsecurity_pcre_malloc_done(old_pool);
-        if (ret != 1){
-            dd("Was not able to extract connection information.");
-        }
         /**
          *
          * FIXME: Check how we can finalize a request without crash nginx.
@@ -245,17 +239,17 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
         old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
         msc_process_request_headers(ctx->modsec_transaction);
         ngx_http_modsecurity_pcre_malloc_done(old_pool);
+
         dd("Processing intervention with the request headers information filled in");
         ret = ngx_http_modsecurity_process_intervention(ctx, r);
         if (r->error_page) {
             return NGX_DECLINED;
-            }
+        }
         if (ret > 0) {
             ctx->intervention_triggered = 1;
             return ret;
         }
     }
-
 
     return NGX_DECLINED;
 }
