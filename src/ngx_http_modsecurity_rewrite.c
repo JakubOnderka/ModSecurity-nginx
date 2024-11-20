@@ -55,11 +55,6 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
         int ret = 0;
 
         ngx_connection_t *connection = r->connection;
-        /**
-         * FIXME: We may want to use struct sockaddr instead of addr_text.
-         *
-         */
-        ngx_str_t addr_text = connection->addr_text;
 
         ctx = ngx_http_modsecurity_create_ctx(r);
 
@@ -81,7 +76,7 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
         int client_port = ngx_inet_get_port(connection->sockaddr);
         int server_port = ngx_inet_get_port(connection->local_sockaddr);
 
-        const char *client_addr = ngx_str_to_char(addr_text, r->pool);
+        const char *client_addr = ngx_str_to_char(connection->addr_text, r->pool);
         if (client_addr == (char*)-1) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
@@ -182,7 +177,7 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
         if (n_uri == NULL) {
-            dd("uri is of length zero");
+            ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "modsecurity: unparsed uri is empty");
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
 
