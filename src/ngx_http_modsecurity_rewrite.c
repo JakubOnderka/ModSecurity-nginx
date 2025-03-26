@@ -178,7 +178,7 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
         }
         if (n_uri == NULL) {
             ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "modsecurity: unparsed uri is empty");
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            return NGX_HTTP_BAD_REQUEST;
         }
 
         old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
