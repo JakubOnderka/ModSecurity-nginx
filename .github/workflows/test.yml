@@ -31,7 +31,7 @@ jobs:
         with:
           repository: owasp-modsecurity/ModSecurity
           path: ModSecurity
-          submodules: true
+          submodules: recursive
           fetch-depth: 1
       - name: Build libModSecurity
         working-directory: ModSecurity
@@ -148,7 +148,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: owasp-modsecurity/ModSecurity
-          submodules: true
+          submodules: recursive
           path: nginx/objs/lib/ModSecurity
           fetch-depth: 1
       - name: Setup Conan
