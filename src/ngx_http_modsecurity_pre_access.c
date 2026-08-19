@@ -99,22 +99,12 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
         dd("asking for the request body, if any. Count: %d",
             r->main->count);
         /**
-         * TODO: Check if there is any benefit to use request_body_in_single_buf set to 1.
-         *
-         *       saw some module using this request_body_in_single_buf
-         *       but not sure what exactly it does, same for the others options below.
-         *
-         * r->request_body_in_single_buf = 1;
+         * Preserve nginx's configured buffering behavior instead of forcing a
+         * full-body single-buffer layout. Forcing those flags makes the body
+         * wait in memory or a temp file until the whole request is read, which
+         * defeats incremental inspection and can hurt throughput for large
+         * uploads.
          */
-        r->request_body_in_single_buf = 1;
-        r->request_body_in_persistent_file = 1;
-        if (!r->request_body_in_file_only) {
-            // If the above condition fails, then the flag below will have been
-            // set correctly elsewhere. We need to set the flag here for other
-            // conditions (client_body_in_file_only not used but
-            // client_body_buffer_size is)
-            r->request_body_in_clean_file = 1;
-        }
 
         rc = ngx_http_read_client_request_body(r,
             ngx_http_modsecurity_request_read);
