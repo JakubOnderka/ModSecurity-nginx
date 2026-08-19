@@ -24,7 +24,7 @@ jobs:
       - name: Setup Dependencies
         run: |
           sudo apt-get update -y -qq
-          sudo apt-get install -y make autoconf automake make libpcre3-dev libyajl-dev libxml2-dev libmaxminddb-dev libcurl4-gnutls-dev $COMPDEPS
+          sudo apt-get install -y make autoconf automake make libpcre2-dev libyajl-dev libxml2-dev libmaxminddb-dev libcurl4-gnutls-dev $COMPDEPS
       - name: Get libModSecurity source
         uses: actions/checkout@v7
         with:
@@ -61,7 +61,7 @@ jobs:
       - name: Build nginx with ModSecurity-nginx module
         working-directory: nginx
         run: |
-          ./auto/configure --with-ld-opt="-Wl,-rpath,/usr/local/lib" --without-pcre2 --with-http_v2_module --with-http_auth_request_module --add-module=../ModSecurity-nginx
+          ./auto/configure --with-ld-opt="-Wl,-rpath,/usr/local/lib" --with-http_v2_module --with-http_auth_request_module --add-module=../ModSecurity-nginx
           make -j $(nproc)
           make modules
           sudo make install
