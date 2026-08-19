@@ -293,7 +293,7 @@ ngx_http_modsecurity_create_ctx(ngx_http_request_t *r)
 
     if (mcf->transaction_id) {
         if (ngx_http_complex_value(r, mcf->transaction_id, &s) != NGX_OK) {
-            return NGX_CONF_ERROR;
+            return NULL;
         }
         ctx->modsec_transaction = msc_new_transaction_with_id(mmcf->modsec, mcf->rules_set, (char *) s.data, log);
 
@@ -303,13 +303,11 @@ ngx_http_modsecurity_create_ctx(ngx_http_request_t *r)
 
     dd("transaction created");
 
-    ngx_http_set_ctx(r, ctx, ngx_http_modsecurity_module);
-
     cln = ngx_pool_cleanup_add(r->pool, 0);
-    if (cln == NULL)
-    {
+    if (cln == NULL) {
         dd("failed to create the ModSecurity context cleanup");
-        return NGX_CONF_ERROR;
+        msc_transaction_cleanup(ctx->modsec_transaction);
+        return NULL;
     }
     cln->handler = ngx_http_modsecurity_cleanup;
     cln->data = ctx;
@@ -317,9 +315,11 @@ ngx_http_modsecurity_create_ctx(ngx_http_request_t *r)
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
     ctx->sanity_headers_out = ngx_array_create(r->pool, 12, sizeof(ngx_http_modsecurity_header_t));
     if (ctx->sanity_headers_out == NULL) {
-        return NGX_CONF_ERROR;
+        return NULL;
     }
 #endif
+
+    ngx_http_set_ctx(r, ctx, ngx_http_modsecurity_module);
 
     return ctx;
 }
