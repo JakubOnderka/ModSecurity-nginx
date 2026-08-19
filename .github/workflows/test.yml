@@ -23,7 +23,6 @@ jobs:
     steps:
       - name: Setup Dependencies
         run: |
-          sudo dpkg --add-architecture i386
           sudo apt-get update -y -qq
           sudo apt-get install -y make autoconf automake make libyajl-dev libxml2-dev libmaxminddb-dev libcurl4-gnutls-dev $COMPDEPS
       - name: Get libModSecurity source
