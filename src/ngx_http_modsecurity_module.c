@@ -273,8 +273,7 @@ ngx_http_modsecurity_create_ctx(ngx_http_request_t *r)
     ngx_log_t                         *log = NULL;
 
     ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_modsecurity_ctx_t));
-    if (ctx == NULL)
-    {
+    if (ctx == NULL) {
         dd("failed to allocate memory for the context.");
         return NULL;
     }
@@ -299,6 +298,11 @@ ngx_http_modsecurity_create_ctx(ngx_http_request_t *r)
 
     } else {
         ctx->modsec_transaction = msc_new_transaction(mmcf->modsec, mcf->rules_set, log);
+    }
+
+    if (ctx->modsec_transaction == NULL) {
+        dd("failed to create new transaction");
+        return NULL;
     }
 
     dd("transaction created");
