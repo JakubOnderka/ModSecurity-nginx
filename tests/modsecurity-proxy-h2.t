@@ -22,7 +22,7 @@ use Test::Nginx::HTTP2;
 select STDERR; $| = 1;
 select STDOUT; $| = 1;
 
-my $t = Test::Nginx->new()->has(qw/http http_v2 proxy/)->plan(23);
+my $t = Test::Nginx->new()->has(qw/http http_v2 proxy/)->plan(25);
 
 $t->write_file_expand('nginx.conf', <<'EOF');
 
@@ -98,6 +98,17 @@ http {
             proxy_pass http://127.0.0.1:8081;
             proxy_read_timeout 1s;
         }
+
+        location /phase3-response-headers {
+            modsecurity on;
+            modsecurity_rules '
+                SecRuleEngine On
+                SecRule RESPONSE_HEADERS:Connection "@rx .+" "id:100,phase:3,deny,status:403"
+                SecRule RESPONSE_HEADERS:Transfer-Encoding "@rx .+" "id:101,phase:3,deny,status:403"
+            ';
+            proxy_pass http://127.0.0.1:8081/multi;
+            proxy_read_timeout 1s;
+        }
     }
 }
 
@@ -121,6 +132,15 @@ $sid = $s->new_stream({ path => '/multi' });
 $frames = $s->read(all => [{ sid => $sid, fin => 1 }]);
 ($frame) = grep { $_->{type} eq "DATA" } @$frames;
 like($frame->{data}, qr/AND-THIS/, "proxy request with multiple packets");
+
+$s = Test::Nginx::HTTP2->new();
+$sid = $s->new_stream({ path => '/phase3-response-headers' });
+$frames = $s->read(all => [{ sid => $sid, fin => 1 }]);
+($frame) = grep { $_->{type} eq "HEADERS" } @$frames;
+is($frame->{headers}->{':status'}, 200,
+	"phase 3 RESPONSE_HEADERS excludes Connection and Transfer-Encoding");
+my $data = join('', map { $_->{data} // '' } grep { $_->{type} eq "DATA" } @$frames);
+like($data, qr/AND-THIS/, "phase 3 RESPONSE_HEADERS allows streamed response");
 
 $s = Test::Nginx::HTTP2->new();
 $sid = $s->new_stream({ path => '/', method => 'HEAD' });
