@@ -303,6 +303,17 @@ ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_str_t n
     ngx_str_t connection;
     ngx_str_t value;
 
+#ifdef NGX_HTTP_VERSION_20
+    if (r->http_version == NGX_HTTP_VERSION_20) {
+        return 1;
+    }
+#endif
+#ifdef NGX_HTTP_VERSION_30
+    if (r->http_version == NGX_HTTP_VERSION_30) {
+        return 1;
+    }
+#endif
+
     ctx = ngx_http_modsecurity_get_module_ctx(r);
 
     if (r->headers_out.status == NGX_HTTP_SWITCHING_PROTOCOLS) {
@@ -349,6 +360,17 @@ static ngx_int_t
 ngx_http_modsecurity_resolv_header_transfer_encoding(ngx_http_request_t *r, ngx_str_t name, off_t offset)
 {
     ngx_http_modsecurity_ctx_t *ctx = NULL;
+
+#ifdef NGX_HTTP_VERSION_20
+    if (r->http_version == NGX_HTTP_VERSION_20) {
+        return 1;
+    }
+#endif
+#ifdef NGX_HTTP_VERSION_30
+    if (r->http_version == NGX_HTTP_VERSION_30) {
+        return 1;
+    }
+#endif
 
     if (r->chunked) {
         ngx_str_t value = ngx_string("chunked");
