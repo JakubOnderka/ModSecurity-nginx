@@ -125,11 +125,10 @@ typedef struct {
 } ngx_http_modsecurity_conf_t;
 
 
-typedef ngx_int_t (*ngx_http_modsecurity_resolv_header_pt)(ngx_http_request_t *r, ngx_str_t name, off_t offset);
+typedef ngx_int_t (*ngx_http_modsecurity_resolv_header_pt)(ngx_http_request_t *r, ngx_str_t name);
 
 typedef struct {
     ngx_str_t name;
-    ngx_uint_t offset;
     ngx_http_modsecurity_resolv_header_pt resolver;
 } ngx_http_modsecurity_header_out_t;
 
