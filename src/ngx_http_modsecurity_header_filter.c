@@ -24,44 +24,6 @@
 
 static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
 
-static ngx_int_t ngx_http_modsecurity_resolv_header_server(ngx_http_request_t *r, ngx_str_t name);
-static ngx_int_t ngx_http_modsecurity_resolv_header_date(ngx_http_request_t *r, ngx_str_t name);
-static ngx_int_t ngx_http_modsecurity_resolv_header_content_length(ngx_http_request_t *r, ngx_str_t name);
-static ngx_int_t ngx_http_modsecurity_resolv_header_content_type(ngx_http_request_t *r, ngx_str_t name);
-static ngx_int_t ngx_http_modsecurity_resolv_header_last_modified(ngx_http_request_t *r, ngx_str_t name);
-static ngx_int_t ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_str_t name);
-static ngx_int_t ngx_http_modsecurity_resolv_header_transfer_encoding(ngx_http_request_t *r, ngx_str_t name);
-static ngx_int_t ngx_http_modsecurity_resolv_header_vary(ngx_http_request_t *r, ngx_str_t name);
-
-ngx_http_modsecurity_header_out_t ngx_http_modsecurity_headers_out[] = {
-
-    { ngx_string("Server"),
-        ngx_http_modsecurity_resolv_header_server },
-
-    { ngx_string("Date"),
-        ngx_http_modsecurity_resolv_header_date },
-
-    { ngx_string("Content-Length"),
-        ngx_http_modsecurity_resolv_header_content_length },
-
-    { ngx_string("Content-Type"),
-        ngx_http_modsecurity_resolv_header_content_type },
-
-    { ngx_string("Last-Modified"),
-        ngx_http_modsecurity_resolv_header_last_modified },
-
-    { ngx_string("Connection"),
-        ngx_http_modsecurity_resolv_header_connection },
-
-    { ngx_string("Transfer-Encoding"),
-        ngx_http_modsecurity_resolv_header_transfer_encoding },
-
-    { ngx_string("Vary"),
-        ngx_http_modsecurity_resolv_header_vary },
-
-    { ngx_null_string, 0 }
-};
-
 
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
 int
@@ -104,17 +66,15 @@ ngx_http_modsecurity_store_ctx_header(ngx_http_request_t *r, ngx_str_t *name, ng
 
 
 static ngx_int_t
-ngx_http_modsecurity_resolv_header_server(ngx_http_request_t *r, ngx_str_t name)
+ngx_http_modsecurity_resolv_header_server(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
     static char ngx_http_server_full_string[] = NGINX_VER;
     static char ngx_http_server_string[] = "nginx";
 
     ngx_http_core_loc_conf_t *clcf = NULL;
-    ngx_http_modsecurity_ctx_t *ctx = NULL;
     ngx_str_t value;
 
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
-    ctx = ngx_http_modsecurity_get_module_ctx(r);
 
     if (r->headers_out.server == NULL) {
         if (clcf->server_tokens) {
@@ -143,12 +103,9 @@ ngx_http_modsecurity_resolv_header_server(ngx_http_request_t *r, ngx_str_t name)
 
 
 static ngx_int_t
-ngx_http_modsecurity_resolv_header_date(ngx_http_request_t *r, ngx_str_t name)
+ngx_http_modsecurity_resolv_header_date(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    ngx_http_modsecurity_ctx_t *ctx = NULL;
     ngx_str_t date;
-
-    ctx = ngx_http_modsecurity_get_module_ctx(r);
 
     if (r->headers_out.date == NULL) {
         date.data = ngx_cached_http_time.data;
@@ -172,16 +129,12 @@ ngx_http_modsecurity_resolv_header_date(ngx_http_request_t *r, ngx_str_t name)
 
 
 static ngx_int_t
-ngx_http_modsecurity_resolv_header_content_length(ngx_http_request_t *r, ngx_str_t name)
+ngx_http_modsecurity_resolv_header_content_length(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    ngx_http_modsecurity_ctx_t *ctx = NULL;
     ngx_str_t value;
     char buf[NGX_INT64_LEN+2];
 
-    if (r->headers_out.content_length_n > 0)
-    {
-        ctx = ngx_http_modsecurity_get_module_ctx(r);
-
+    if (r->headers_out.content_length_n > 0) {
         value.len = (int)(ngx_sprintf((u_char *)buf, "%O", r->headers_out.content_length_n) - (u_char *)buf);
         value.data = (unsigned char *)buf;
 
@@ -200,14 +153,9 @@ ngx_http_modsecurity_resolv_header_content_length(ngx_http_request_t *r, ngx_str
 
 
 static ngx_int_t
-ngx_http_modsecurity_resolv_header_content_type(ngx_http_request_t *r, ngx_str_t name)
+ngx_http_modsecurity_resolv_header_content_type(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    ngx_http_modsecurity_ctx_t *ctx = NULL;
-
-    if (r->headers_out.content_type.len > 0)
-    {
-        ctx = ngx_http_modsecurity_get_module_ctx(r);
-
+    if (r->headers_out.content_type.len > 0) {
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
         ngx_http_modsecurity_store_ctx_header(r, &name, &r->headers_out.content_type);
 #endif
@@ -224,9 +172,8 @@ ngx_http_modsecurity_resolv_header_content_type(ngx_http_request_t *r, ngx_str_t
 
 
 static ngx_int_t
-ngx_http_modsecurity_resolv_header_last_modified(ngx_http_request_t *r, ngx_str_t name)
+ngx_http_modsecurity_resolv_header_last_modified(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    ngx_http_modsecurity_ctx_t *ctx = NULL;
     u_char buf[sizeof("Mon, 28 Sep 1970 06:00:00 GMT")], *p;
     ngx_str_t value;
 
@@ -238,8 +185,6 @@ ngx_http_modsecurity_resolv_header_last_modified(ngx_http_request_t *r, ngx_str_
 
     value.data = buf;
     value.len = (int)(p-buf);
-
-    ctx = ngx_http_modsecurity_get_module_ctx(r);
 
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
     ngx_http_modsecurity_store_ctx_header(r, &name, &value);
@@ -258,9 +203,8 @@ static ngx_str_t ngx_http_modsecurity_connection_keepalive = ngx_string("keep-al
 
 
 static ngx_int_t
-ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_str_t name)
+ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    ngx_http_modsecurity_ctx_t *ctx = NULL;
     ngx_http_core_loc_conf_t *clcf = NULL;
     ngx_str_t connection;
     ngx_str_t value;
@@ -275,8 +219,6 @@ ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_str_t n
         return 1;
     }
 #endif
-
-    ctx = ngx_http_modsecurity_get_module_ctx(r);
 
     if (r->headers_out.status == NGX_HTTP_SWITCHING_PROTOCOLS) {
         connection = ngx_http_modsecurity_connection_upgrade;
@@ -319,10 +261,8 @@ ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_str_t n
 }
 
 static ngx_int_t
-ngx_http_modsecurity_resolv_header_transfer_encoding(ngx_http_request_t *r, ngx_str_t name)
+ngx_http_modsecurity_resolv_header_transfer_encoding(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    ngx_http_modsecurity_ctx_t *ctx = NULL;
-
 #ifdef NGX_HTTP_VERSION_20
     if (r->http_version == NGX_HTTP_VERSION_20) {
         return 1;
@@ -336,8 +276,6 @@ ngx_http_modsecurity_resolv_header_transfer_encoding(ngx_http_request_t *r, ngx_
 
     if (r->chunked) {
         ngx_str_t value = ngx_string("chunked");
-
-        ctx = ngx_http_modsecurity_get_module_ctx(r);
 
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
         ngx_http_modsecurity_store_ctx_header(r, &name, &value);
@@ -354,17 +292,14 @@ ngx_http_modsecurity_resolv_header_transfer_encoding(ngx_http_request_t *r, ngx_
 }
 
 static ngx_int_t
-ngx_http_modsecurity_resolv_header_vary(ngx_http_request_t *r, ngx_str_t name)
+ngx_http_modsecurity_resolv_header_vary(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
 #if (NGX_HTTP_GZIP)
-    ngx_http_modsecurity_ctx_t *ctx = NULL;
     ngx_http_core_loc_conf_t *clcf = NULL;
 
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
     if (r->gzip_vary && clcf->gzip_vary) {
         ngx_str_t value = ngx_string("Accept-Encoding");
-
-        ctx = ngx_http_modsecurity_get_module_ctx(r);
 
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
         ngx_http_modsecurity_store_ctx_header(r, &name, &value);
@@ -441,7 +376,6 @@ ngx_http_modsecurity_header_filter(ngx_http_request_t *r)
 
     ctx->processed = 1;
     /*
-     *
      * Assuming ModSecurity module is running immediately before the
      * ngx_http_header_filter, we will be able to populate ModSecurity with
      * headers from the headers_out structure.
@@ -451,17 +385,21 @@ ngx_http_modsecurity_header_filter(ngx_http_request_t *r)
      * to enumerate all headers, we first look at the headers_out structure,
      * and later we look into the ngx_list_part_t. The ngx_list_part_t must be
      * checked. Other module(s) in the chain may added some content to it.
-     *
      */
-    for (i = 0; ngx_http_modsecurity_headers_out[i].name.len; i++)
-    {
-        dd("Sending header to ModSecurity - header: `%.*s'",
-            (int) ngx_http_modsecurity_headers_out[i].name.len,
-            ngx_http_modsecurity_headers_out[i].name.data);
 
-        ngx_http_modsecurity_headers_out[i].resolver(r,
-            ngx_http_modsecurity_headers_out[i].name);
-    }
+ #define NGX_HTTP_MODSECURITY_RESOLV_HEADER(header_name, header) \
+    ngx_http_modsecurity_resolv_header_##header_name(r, ctx, ngx_string(header))
+
+    NGX_HTTP_MODSECURITY_RESOLV_HEADER(server, "Server");
+    NGX_HTTP_MODSECURITY_RESOLV_HEADER(date, "Date");
+    NGX_HTTP_MODSECURITY_RESOLV_HEADER(content_length, "Content-Length");
+    NGX_HTTP_MODSECURITY_RESOLV_HEADER(content_type, "Content-Type");
+    NGX_HTTP_MODSECURITY_RESOLV_HEADER(last_modified, "Last-Modified");
+    NGX_HTTP_MODSECURITY_RESOLV_HEADER(connection, "Connection");
+    NGX_HTTP_MODSECURITY_RESOLV_HEADER(transfer_encoding, "Transfer-Encoding");
+    NGX_HTTP_MODSECURITY_RESOLV_HEADER(vary, "Vary");
+
+#undef NGX_HTTP_MODSECURITY_RESOLV_HEADER
 
     for (i = 0 ;; i++)
     {

@@ -124,15 +124,6 @@ typedef struct {
     ngx_http_complex_value_t  *transaction_id;
 } ngx_http_modsecurity_conf_t;
 
-
-typedef ngx_int_t (*ngx_http_modsecurity_resolv_header_pt)(ngx_http_request_t *r, ngx_str_t name);
-
-typedef struct {
-    ngx_str_t name;
-    ngx_http_modsecurity_resolv_header_pt resolver;
-} ngx_http_modsecurity_header_out_t;
-
-
 extern ngx_module_t ngx_http_modsecurity_module;
 
 /* ngx_http_modsecurity_module.c */
