@@ -388,7 +388,7 @@ ngx_http_modsecurity_header_filter(ngx_http_request_t *r)
      */
 
  #define NGX_HTTP_MODSECURITY_RESOLV_HEADER(header_name, header) \
-    ngx_http_modsecurity_resolv_header_##header_name(r, ctx, ngx_string(header))
+    ngx_http_modsecurity_resolv_header_##header_name(r, ctx, (ngx_str_t){sizeof(header) - 1, (u_char *) header})
 
     NGX_HTTP_MODSECURITY_RESOLV_HEADER(server, "Server");
     NGX_HTTP_MODSECURITY_RESOLV_HEADER(date, "Date");
