@@ -61,6 +61,15 @@ http {
             ';
             proxy_pass http://127.0.0.1:%%PORT_8081%%;
         }
+        
+        location /chunkedbody {
+            modsecurity_rules '
+                SecRuleEngine On
+                SecRequestBodyAccess On
+                SecRule REQUEST_BODY "@streq VERY BAD BODY" "id:13,phase:request,deny,log,status:403"
+            ';
+            proxy_pass http://127.0.0.1:%%PORT_8081%%;
+        }
 
         location /nobodyaccess {
             modsecurity_rules '
@@ -134,7 +143,7 @@ EOF
 $t->run_daemon(\&http_daemon);
 $t->run()->waitforsocket('127.0.0.1:' . port(8081));
 
-$t->plan(41);
+$t->plan(42);
 
 ###############################################################################
 
@@ -152,6 +161,20 @@ like(http_req_body($method, '/bodylimitprocesspartial', 'BODY' x 30 . 'BAD BODY'
 like(http_req_body('POST', '/useauth', 'BODY' x 16), qr/TEST-OK-IF-YOU-SEE-THIS/, "POST with auth_request (request size < client_header_buffer_size)");
 like(http_req_body('POST', '/useauth', 'BODY' x 257), qr/TEST-OK-IF-YOU-SEE-THIS/, "POST with auth_request (request size > client_header_buffer_size)");
 like(http_req_body('POST', '/bodyaccesssmallbuffer', 'GOODGOODGOODBAD BODY'), qr/^HTTP.*403/, 'POST request body access on, block (client body spills to temp file)');
+
+like(
+        http(
+                'POST /chunkedbody HTTP/1.1' . CRLF
+                . 'Host: localhost' . CRLF
+                . 'Transfer-Encoding: chunked' . CRLF
+                . 'Connection: close' . CRLF . CRLF
+                . '9' . CRLF . 'VERY BAD ' . CRLF
+                . '4' . CRLF . 'BODY' . CRLF
+                . '0' . CRLF . CRLF
+        ),
+        qr/^HTTP.*403/,
+        'chunked request body inspection across chunk boundaries'
+);
 
 like(
         http(
