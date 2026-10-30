@@ -45,8 +45,9 @@ http {
     }
 
     server {
-        listen       127.0.0.1:8080 http2;
+        listen       127.0.0.1:8080;
         server_name  localhost;
+        http2        on;
 
         modsecurity on;
         client_header_buffer_size 1024;
