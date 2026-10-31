@@ -33,12 +33,10 @@ jobs:
           restore-keys: |
             ccache-${{ matrix.os }}-${{ matrix.compiler }}-
       - name: Get libModSecurity source
-        uses: actions/checkout@v7
-        with:
-          repository: owasp-modsecurity/ModSecurity
-          path: ModSecurity
-          submodules: recursive
-          fetch-depth: 1
+        run: |
+          curl -L https://github.com/owasp-modsecurity/ModSecurity/releases/download/v3.0.17/modsecurity-v3.0.17.tar.gz -o modsecurity.tar.gz
+          mkdir ModSecurity
+          tar -xzf modsecurity.tar.gz -C ModSecurity --strip-components=1
       - name: Build libModSecurity
         working-directory: ModSecurity
         run: |
