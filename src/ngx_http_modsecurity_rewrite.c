@@ -121,7 +121,7 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
         // Convert local address to server_addr with null termination
         ngx_str_t s;
         u_char server_addr[NGX_SOCKADDR_STRLEN + 1];
-        s.len = 0;
+        s.len = NGX_SOCKADDR_STRLEN;
         s.data = server_addr;
         if (ngx_connection_local_sockaddr(r->connection, &s, 0) != NGX_OK) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
