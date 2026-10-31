@@ -61,6 +61,16 @@ http {
             proxy_pass http://127.0.0.1:8081;
         }
 
+        location /bodyaccesssmallbuffer {
+            client_body_buffer_size 4;
+            modsecurity_rules '
+                SecRuleEngine On
+                SecRequestBodyAccess On
+                SecRule REQUEST_BODY "@rx BAD BODY" "id:12,phase:request,deny,log,status:403"
+            ';
+            proxy_pass http://127.0.0.1:8081;
+        }
+
         location /nobodyaccess {
             modsecurity_rules '
                 SecRuleEngine On
@@ -112,7 +122,7 @@ EOF
 
 $t->run();
 
-$t->plan(36);
+$t->plan(41);
 
 ###############################################################################
 
@@ -184,6 +194,41 @@ $frames = $s->read(all => [{ sid => $sid, fin => 1 }]);
 is($frame->{headers}->{':status'}, 403, "${method} request body limit process partial, block");
 
 }
+
+$s = Test::Nginx::HTTP2->new();
+$sid = $s->new_stream({ path => '/bodyaccess' });
+$frames = $s->read(all => [{ sid => $sid, fin => 1 }]);
+($frame) = grep { $_->{type} eq "DATA" } @$frames;
+like($frame->{data}, qr/TEST-OK-IF-YOU-SEE-THIS/, 'request without a body passes');
+
+$s = Test::Nginx::HTTP2->new();
+$sid = $s->new_stream({ method => 'POST', path => '/bodyaccess', 'body_more' => 1 });
+$s->h2_body('');
+$frames = $s->read(all => [{ sid => $sid, fin => 1 }]);
+($frame) = grep { $_->{type} eq "DATA" } @$frames;
+like($frame->{data}, qr/TEST-OK-IF-YOU-SEE-THIS/, 'empty DATA frame passes');
+
+$s = Test::Nginx::HTTP2->new();
+$sid = $s->new_stream({ method => 'POST', path => '/bodyaccess', 'body_more' => 1 });
+$s->h2_body('VERY BAD ', { body_more => 1 });
+$s->h2_body('BODY');
+$frames = $s->read(all => [{ sid => $sid, fin => 1 }]);
+($frame) = grep { $_->{type} eq "HEADERS" } @$frames;
+is($frame->{headers}->{':status'}, 403, 'request rule matches across DATA frames');
+
+$s = Test::Nginx::HTTP2->new();
+$sid = $s->new_stream({ method => 'POST', path => '/bodylimitreject', 'body_more' => 1 });
+$s->h2_body('BODY' x 32 . 'X');
+$frames = $s->read(all => [{ sid => $sid, fin => 1 }]);
+($frame) = grep { $_->{type} eq "HEADERS" } @$frames;
+is($frame->{headers}->{':status'}, 403, 'POST request body limit reject, block (one byte over limit)');
+
+$s = Test::Nginx::HTTP2->new();
+$sid = $s->new_stream({ method => 'POST', path => '/bodyaccesssmallbuffer', 'body_more' => 1 });
+$s->h2_body('GOODGOODGOODBAD BODY');
+$frames = $s->read(all => [{ sid => $sid, fin => 1 }]);
+($frame) = grep { $_->{type} eq "HEADERS" } @$frames;
+is($frame->{headers}->{':status'}, 403, 'POST body rule blocks when client body spills to temp file');
 
 TODO: {
 # https://github.com/SpiderLabs/ModSecurity-nginx/issues/163

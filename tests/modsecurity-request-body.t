@@ -143,7 +143,7 @@ EOF
 $t->run_daemon(\&http_daemon);
 $t->run()->waitforsocket('127.0.0.1:' . port(8081));
 
-$t->plan(42);
+$t->plan(45);
 
 ###############################################################################
 
@@ -158,9 +158,13 @@ like(http_req_body($method, '/bodylimitprocesspartial', 'BODY' x 32 . 'BAD BODY'
 like(http_req_body($method, '/bodylimitprocesspartial', 'BODY' x 30 . 'BAD BODY' x 32), qr/^HTTP.*403/, "$method request body limit process partial, block");
 }
 
+like(http_get('/bodyaccess'), qr/TEST-OK-IF-YOU-SEE-THIS/, 'request without a body passes');
+like(http_req_body('POST', '/bodyaccess', ''), qr/TEST-OK-IF-YOU-SEE-THIS/, 'zero-length request body passes');
+
 like(http_req_body('POST', '/useauth', 'BODY' x 16), qr/TEST-OK-IF-YOU-SEE-THIS/, "POST with auth_request (request size < client_header_buffer_size)");
 like(http_req_body('POST', '/useauth', 'BODY' x 257), qr/TEST-OK-IF-YOU-SEE-THIS/, "POST with auth_request (request size > client_header_buffer_size)");
 like(http_req_body('POST', '/bodyaccesssmallbuffer', 'GOODGOODGOODBAD BODY'), qr/^HTTP.*403/, 'POST request body access on, block (client body spills to temp file)');
+like(http_req_body('POST', '/bodylimitreject', 'BODY' x 32 . 'X'), qr/^HTTP.*403/, 'POST request body limit reject, block (one byte over limit)');
 
 like(
         http(
