@@ -22,6 +22,95 @@
 
 #include "ngx_http_modsecurity_common.h"
 
+static ngx_http_request_body_filter_pt
+    ngx_http_modsecurity_next_request_body_filter;
+
+static ngx_int_t
+ngx_http_modsecurity_append_body(ngx_http_request_t *r,
+    ngx_http_modsecurity_ctx_t *ctx, u_char *data, size_t len)
+{
+    ngx_pool_t *old_pool;
+    int ret;
+
+    if (len == 0 || ctx->request_body_limit_reached) {
+        return NGX_OK;
+    }
+
+    old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
+    ret = msc_append_request_body(ctx->modsec_transaction, data, len);
+    ngx_http_modsecurity_pcre_malloc_done(old_pool);
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                  "modsecurity: appended request body buffer %uz for \"%V\"",
+                  len, &r->uri);
+
+    /* ProcessPartial returns zero once its inspection limit is reached. */
+    if (ret == 0) {
+        ctx->request_body_limit_reached = 1;
+    }
+
+    ret = ngx_http_modsecurity_process_intervention(ctx, r);
+    if (ret > 0) {
+        ctx->intervention_triggered = 1;
+        return ret;
+    }
+
+    return NGX_OK;
+}
+
+static ngx_int_t
+ngx_http_modsecurity_request_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
+{
+    ngx_http_modsecurity_ctx_t *ctx;
+    ngx_chain_t *cl;
+    ngx_int_t rc;
+
+    /* Subrequests may share the main request's pool and buffered body. */
+    ctx = ngx_http_get_module_ctx(r, ngx_http_modsecurity_module);
+    if (ctx == NULL || !ctx->body_requested || ctx->request_body_processed
+        || ctx->intervention_triggered)
+    {
+        return ngx_http_modsecurity_next_request_body_filter(r, in);
+    }
+
+    ctx->request_body_filter_seen = 1;
+
+    for (cl = in; cl; cl = cl->next) {
+        if (ngx_buf_in_memory(cl->buf)) {
+            rc = ngx_http_modsecurity_append_body(r, ctx, cl->buf->pos,
+                cl->buf->last - cl->buf->pos);
+            if (rc != NGX_OK) {
+                /* No completion callback follows an asynchronous rejection. */
+                if (ctx->waiting_more_body) {
+                    ctx->waiting_more_body = 0;
+                    r->main->count--;
+                }
+                return rc;
+            }
+        } else if (ngx_buf_size(cl->buf) != 0) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                "modsecurity: non-memory buffer in request body filter");
+            if (ctx->waiting_more_body) {
+                ctx->waiting_more_body = 0;
+                r->main->count--;
+            }
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+    }
+
+    /* The next filter owns these buffers and may save them to disk. */
+    return ngx_http_modsecurity_next_request_body_filter(r, in);
+}
+
+ngx_int_t
+ngx_http_modsecurity_request_body_filter_init(void)
+{
+    ngx_http_modsecurity_next_request_body_filter =
+        ngx_http_top_request_body_filter;
+    ngx_http_top_request_body_filter =
+        ngx_http_modsecurity_request_body_filter;
+    return NGX_OK;
+}
+
 void
 ngx_http_modsecurity_request_read(ngx_http_request_t *r)
 {
@@ -33,7 +122,7 @@ ngx_http_modsecurity_request_read(ngx_http_request_t *r)
     r->main->count--;
 #endif
 
-    if (ctx->waiting_more_body)
+    if (ctx != NULL && ctx->waiting_more_body)
     {
         ctx->waiting_more_body = 0;
         r->write_event_handler = ngx_http_core_run_phases;
@@ -98,14 +187,6 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
 
         dd("asking for the request body, if any. Count: %d",
             r->main->count);
-        /**
-         * Preserve nginx's configured buffering behavior instead of forcing a
-         * full-body single-buffer layout. Forcing those flags makes the body
-         * wait in memory or a temp file until the whole request is read, which
-         * defeats incremental inspection and can hurt throughput for large
-         * uploads.
-         */
-
         rc = ngx_http_read_client_request_body(r,
             ngx_http_modsecurity_request_read);
         if (rc == NGX_ERROR || rc >= NGX_HTTP_SPECIAL_RESPONSE) {
@@ -128,7 +209,7 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
     if (ctx->waiting_more_body == 0)
     {
         int ret = 0;
-        int already_inspected = 0;
+        ngx_int_t rc;
 
         dd("request body is ready to be processed");
 
@@ -136,22 +217,18 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
 
         ngx_chain_t *chain = r->request_body->bufs;
 
-        /**
-         * TODO: Speed up the analysis by sending chunk while they arrive.
-         *
-         * Notice that we are waiting for the full request body to
-         * start to process it, it may not be necessary. We may send
-         * the chunks to ModSecurity while nginx keep calling this
-         * function.
-         */
-
-        if (r->request_body->temp_file != NULL) {
+        /* Another module may have read the body before our context existed. */
+        if (!ctx->request_body_filter_seen
+            && r->request_body->temp_file != NULL)
+        {
             ngx_temp_file_t *temp_file = r->request_body->temp_file;
             off_t offset = 0;
             u_char buffer[8192];
-            
+
             /* Ordinary spill files may already be unlinked on Unix. */
-            while (offset < temp_file->offset) {
+            while (offset < temp_file->offset
+                   && !ctx->request_body_limit_reached)
+            {
                 size_t size = (size_t) ngx_min(
                     (off_t) sizeof(buffer), temp_file->offset - offset);
                 ssize_t n = ngx_read_file(&temp_file->file, buffer, size,
@@ -164,45 +241,34 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
                     return NGX_HTTP_INTERNAL_SERVER_ERROR;
                 }
 
-                msc_append_request_body(ctx->modsec_transaction, buffer,
+                rc = ngx_http_modsecurity_append_body(r, ctx, buffer,
                     (size_t) n);
                 offset += n;
 
-                ret = ngx_http_modsecurity_process_intervention(ctx, r);
-                if (ret > 0) {
-                    return ret;
+                if (rc != NGX_OK) {
+                    return rc;
                 }
             }
 
-            already_inspected = 1;
-        } else {
-            dd("inspection request body in memory.");
+            ctx->request_body_filter_seen = 1;
         }
 
-        while (chain && !already_inspected)
+        while (chain && !ctx->request_body_filter_seen)
         {
-            u_char *data = chain->buf->pos;
-
-            msc_append_request_body(ctx->modsec_transaction, data,
-                chain->buf->last - data);
-
-            if (chain->buf->last_buf) {
-                break;
+            if (ngx_buf_in_memory(chain->buf)) {
+                rc = ngx_http_modsecurity_append_body(r, ctx, chain->buf->pos,
+                    chain->buf->last - chain->buf->pos);
+                if (rc != NGX_OK) {
+                    return rc;
+                }
+            } else if (ngx_buf_size(chain->buf) != 0) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                    "modsecurity: unsupported buffered request body");
+                return NGX_HTTP_INTERNAL_SERVER_ERROR;
             }
             chain = chain->next;
-
-/* XXX: chains are processed one-by-one, maybe worth to pass all chains and then call intervention() ? */
-
-            /**
-             * ModSecurity may perform stream inspection on this buffer,
-             * it may ask for a intervention in consequence of that.
-             *
-             */
-            ret = ngx_http_modsecurity_process_intervention(ctx, r);
-            if (ret > 0) {
-                return ret;
-            }
         }
+        ctx->request_body_filter_seen = 1;
 
         /**
          * At this point, all the request body was sent to ModSecurity

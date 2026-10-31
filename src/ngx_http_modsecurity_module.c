@@ -639,6 +639,10 @@ ngx_http_modsecurity_init(ngx_conf_t *cf)
     }
     *h_log = ngx_http_modsecurity_log_handler;
 
+    rc = ngx_http_modsecurity_request_body_filter_init();
+    if (rc != NGX_OK) {
+        return rc;
+    }
 
     rc = ngx_http_modsecurity_header_filter_init();
     if (rc != NGX_OK) {
