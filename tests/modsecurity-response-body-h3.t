@@ -86,10 +86,12 @@ is($body, 'GOOD BODY', 'allowed response body is preserved');
 TODO: {
 local $TODO = 'response-body blocking is not yet supported';
 ($headers, $body) = request('/bad');
-ok($headers->{':status'} == 403 && $body !~ /BAD BODY/,
+ok(defined($headers->{':status'})
+	&& $headers->{':status'} == 403 && $body !~ /BAD BODY/,
 	'matching response body is blocked without leaking the body');
 ($headers, $body) = request('/split');
-ok($headers->{':status'} == 403 && $body !~ /BAD BODY/,
+ok(defined($headers->{':status'})
+	&& $headers->{':status'} == 403 && $body !~ /BAD BODY/,
 	'response rule matches across upstream writes without leaking the body');
 }
 
