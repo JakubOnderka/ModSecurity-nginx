@@ -162,7 +162,7 @@ foreach my $mode ('memory', 'file') {
                     { name => ':path', value => $request->{path} },
                     { name => ':authority', value => 'localhost' },
                     { name => 'content-length', value => length($body) },
-                    { name => 'x-seed', value => 'yes' }
+                    { name => 'x-seed', value => 'yes', mode => 4 }
                 ];
             }
             my $sid = $s->new_stream($request);
