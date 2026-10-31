@@ -6,27 +6,32 @@ on:
       - master
   pull_request:
 
-  # Default: none
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
   build-linux:
-    permissions:
-      contents: read
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-24.04, ubuntu-26.04]
         compiler: [gcc, clang]
     env:
-        CC: "/usr/bin/${{ matrix.compiler }}"
-        CXX: "/usr/bin/${{ matrix.compiler == 'gcc' && 'g' || 'clang' }}++"
+        CC: "ccache /usr/bin/${{ matrix.compiler }}"
+        CXX: "ccache /usr/bin/${{ matrix.compiler == 'gcc' && 'g' || 'clang' }}++"
         COMPDEPS: "${{ matrix.compiler == 'gcc' && 'gcc g++' || 'clang' }}"
     steps:
       - name: Setup Dependencies
         run: |
           sudo apt-get update -y -qq
-          sudo apt-get install -y make autoconf automake make libpcre2-dev libyajl-dev libxml2-dev libmaxminddb-dev libcurl4-gnutls-dev libssl-dev libcryptx-perl openssl $COMPDEPS
+          sudo apt-get install -y make autoconf automake make libpcre2-dev libyajl-dev libxml2-dev libmaxminddb-dev libcurl4-gnutls-dev libssl-dev libcryptx-perl openssl ccache $COMPDEPS
+      - name: Cache compiler outputs
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ matrix.os }}-${{ matrix.compiler }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ccache-${{ matrix.os }}-${{ matrix.compiler }}-
       - name: Get libModSecurity source
         uses: actions/checkout@v7
         with:
@@ -67,6 +72,8 @@ jobs:
           make -j $(nproc)
           make modules
           sudo make install
+      - name: Show ccache statistics
+        run: ccache --show-stats
       - name: Run ModSecurity-nginx tests
         working-directory: nginx/test
         run: |
