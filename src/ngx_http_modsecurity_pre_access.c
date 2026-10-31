@@ -146,18 +146,33 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
          */
 
         if (r->request_body->temp_file != NULL) {
-            ngx_str_t file_path = r->request_body->temp_file->file.name;
-            const char *file_name = ngx_str_to_char(file_path, r->pool);
-            if (file_name == (char*)-1) {
-                return NGX_HTTP_INTERNAL_SERVER_ERROR;
-            }
-            /*
-             * Request body was saved to a file, probably we don't have a
-             * copy of it in memory.
-             */
-            dd("request body inspection: file -- %s", file_name);
+            ngx_temp_file_t *temp_file = r->request_body->temp_file;
+            off_t offset = 0;
+            u_char buffer[8192];
+            
+            /* Ordinary spill files may already be unlinked on Unix. */
+            while (offset < temp_file->offset) {
+                size_t size = (size_t) ngx_min(
+                    (off_t) sizeof(buffer), temp_file->offset - offset);
+                ssize_t n = ngx_read_file(&temp_file->file, buffer, size,
+                    offset);
 
-            msc_request_body_from_file(ctx->modsec_transaction, file_name);
+                if (n == NGX_ERROR || n == 0) {
+                    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                        "modsecurity: failed to read request body file "
+                        "\"%V\" at offset %O", &temp_file->file.name, offset);
+                    return NGX_HTTP_INTERNAL_SERVER_ERROR;
+                }
+
+                msc_append_request_body(ctx->modsec_transaction, buffer,
+                    (size_t) n);
+                offset += n;
+
+                ret = ngx_http_modsecurity_process_intervention(ctx, r);
+                if (ret > 0) {
+                    return ret;
+                }
+            }
 
             already_inspected = 1;
         } else {
