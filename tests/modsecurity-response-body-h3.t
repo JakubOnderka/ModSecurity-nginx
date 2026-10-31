@@ -39,10 +39,6 @@ http {
     ssl_certificate localhost.crt;
 
     server {
-        listen 127.0.0.1:8081;
-    }
-
-    server {
         listen 127.0.0.1:%%PORT_8980_UDP%% quic;
         server_name localhost;
 
@@ -77,7 +73,9 @@ system('openssl req -x509 -new '
 	or die "Can't create certificate: $!\n";
 
 $t->run_daemon(\&http_daemon);
+$t->waitforsocket('127.0.0.1:' . port(8081));
 $t->run();
+$t->todo_alerts();
 
 ###############################################################################
 
@@ -148,13 +146,17 @@ sub http_daemon {
 			last if $line =~ /^\x0d?\x0a$/;
 			$request .= $line;
 		}
+		if ($request eq '') {
+			close $client;
+			next;
+		}
 		my ($uri) = $request =~ /^\S+\s+(\S+)/;
 
 		if ($uri eq '/empty') {
 			print $client "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n";
 		} elsif ($uri eq '/not-modified') {
 			print $client "HTTP/1.1 304 Not Modified\r\nConnection: close\r\n\r\n";
-		} elsif ($uri eq '/range' && $request =~ /^range: bytes=0-3$/mi) {
+		} elsif ($uri eq '/range' && $request =~ /^range: bytes=0-3\r?$/mi) {
 			print $client "HTTP/1.1 206 Partial Content\r\n"
 				. "Content-Type: text/plain\r\nContent-Range: bytes 0-3/9\r\n"
 				. "Content-Length: 4\r\nConnection: close\r\n\r\nGOOD";
