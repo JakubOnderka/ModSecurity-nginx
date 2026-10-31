@@ -97,6 +97,8 @@ typedef struct {
     unsigned processed:1;
     unsigned intervention_triggered:1;
     unsigned request_body_processed:1;
+    unsigned request_body_filter_seen:1;
+    unsigned request_body_limit_reached:1;
     ngx_uint_t status; // status code from modsecurity
 } ngx_http_modsecurity_ctx_t;
 
@@ -156,6 +158,7 @@ ngx_int_t ngx_http_modsecurity_log_handler(ngx_http_request_t *r);
 
 /* ngx_http_modsecurity_pre_access.c */
 ngx_int_t ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r);
+ngx_int_t ngx_http_modsecurity_request_body_filter_init(void);
 
 /* ngx_http_modsecurity_rewrite.c */
 ngx_int_t ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r);
