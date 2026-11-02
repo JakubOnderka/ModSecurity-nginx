@@ -107,14 +107,12 @@ ngx_http_modsecurity_resolv_header_date(ngx_http_request_t *r, ngx_http_modsecur
 {
     ngx_str_t date;
 
-    if (r->headers_out.date == NULL) {
-        date.data = ngx_cached_http_time.data;
-        date.len = ngx_cached_http_time.len;
-    } else {
-        ngx_table_elt_t *h = r->headers_out.date;
-        date.data = h->value.data;
-        date.len = h->value.len;
+    if (r->headers_out.date != NULL) {
+        return 1;
     }
+
+    date.data = ngx_cached_http_time.data;
+    date.len = ngx_cached_http_time.len;
 
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
     ngx_http_modsecurity_store_ctx_header(r, &name, &date);
