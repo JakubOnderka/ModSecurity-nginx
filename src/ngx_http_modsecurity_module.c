@@ -187,6 +187,7 @@ ngx_http_modsecurity_process_intervention (ngx_http_modsecurity_ctx_t *ctx, ngx_
 
     if (intervention.url != NULL)
     {
+        ctx->status = intervention.status;
         dd("intervention -- redirecting to: %s with status code: %d", intervention.url, intervention.status);
 
         if (r->header_sent)
