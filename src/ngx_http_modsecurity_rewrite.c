@@ -117,7 +117,7 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
         }
         if (hostname.len > 0) {
             const char *host_name = ngx_str_to_char(hostname, r->pool);
-            if (host_name == (char*)-1 || host_name == NULL) {
+            if (host_name == (char*)-1) {
                 return NGX_HTTP_INTERNAL_SERVER_ERROR;
             }
             else {
