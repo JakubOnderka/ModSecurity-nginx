@@ -18,7 +18,7 @@ jobs:
       SANITIZER_FLAGS: "-O1 -g -fsanitize=address -fno-omit-frame-pointer -fno-optimize-sibling-calls"
       ASAN_OPTIONS: "detect_leaks=0:abort_on_error=1"
     steps:
-      - name: Setup Dependencies
+      - name: Setup packages
         run: |
           sudo apt-get update -y -qq
           sudo apt-get install -y clang libclang-rt-dev llvm make autoconf automake libtool libpcre2-dev libyajl-dev libxml2-dev libmaxminddb-dev libcurl4-gnutls-dev libssl-dev libcryptx-perl openssl ccache
@@ -29,11 +29,16 @@ jobs:
           key: ccache-asan-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             ccache-asan-
-      - name: Get libModSecurity source
+      - name: Fetch dependencies
         run: |
-          curl --fail --location --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 120 https://github.com/owasp-modsecurity/ModSecurity/releases/download/v3.0.17/modsecurity-v3.0.17.tar.gz -o modsecurity.tar.gz
-          mkdir ModSecurity
+          curl --fail --fail-early --location --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 120 \
+            https://github.com/owasp-modsecurity/ModSecurity/releases/download/v3.0.17/modsecurity-v3.0.17.tar.gz -o modsecurity.tar.gz \
+            https://github.com/nginx/nginx/releases/download/release-1.31.8/nginx-1.31.8.tar.gz -o nginx.tar.gz \
+            https://github.com/nginx/nginx-tests/archive/refs/heads/master.tar.gz -o nginx-tests.tar.gz
+          mkdir ModSecurity nginx nginx/test
           tar -xzf modsecurity.tar.gz -C ModSecurity --strip-components=1
+          tar -xzf nginx.tar.gz -C nginx --strip-components=1
+          tar -xzf nginx-tests.tar.gz -C nginx/test --strip-components=1
       - name: Build libModSecurity with ASan
         working-directory: ModSecurity
         env:
@@ -50,24 +55,12 @@ jobs:
         with:
           path: ModSecurity-nginx
           fetch-depth: 1
-      - name: Get Nginx source
-        uses: actions/checkout@v7
-        with:
-          repository: nginx/nginx
-          path: nginx
-          fetch-depth: 1
-      - name: Get Nginx tests
-        uses: actions/checkout@v7
-        with:
-          repository: nginx/nginx-tests
-          path: nginx/test
-          fetch-depth: 1
       - name: Copy connector tests
         run: cp ModSecurity-nginx/tests/* nginx/test
       - name: Build Nginx and connector with ASan
         working-directory: nginx
         run: |
-          ./auto/configure \
+          ./configure \
             --with-cc-opt="$SANITIZER_FLAGS -DNGX_DEBUG_PALLOC=1" \
             --with-ld-opt="-Wl,-rpath,/usr/local/lib $SANITIZER_FLAGS" \
             --with-http_v2_module \
