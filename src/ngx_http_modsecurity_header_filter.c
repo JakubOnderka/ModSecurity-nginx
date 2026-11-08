@@ -248,7 +248,7 @@ ngx_http_modsecurity_header_filter(ngx_http_request_t *r)
 /* XXX: can it happen ?  already processed i mean */
 /* XXX: check behaviour on 'ModSecurity off' */
 
-    if (ctx && ctx->processed)
+    if (ctx->processed)
     {
         /*
          * FIXME: verify if this request is already processed.
