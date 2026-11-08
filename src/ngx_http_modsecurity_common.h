@@ -71,11 +71,6 @@
 #define MODSECURITY_NGINX_WHOAMI "ModSecurity-nginx v" \
     MODSECURITY_NGINX_VERSION
 
-typedef struct {
-    ngx_str_t name;
-    ngx_str_t value;
-} ngx_http_modsecurity_header_t;
-
 
 typedef struct {
     Transaction *modsec_transaction;
