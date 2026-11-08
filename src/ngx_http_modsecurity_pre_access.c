@@ -45,7 +45,6 @@ ngx_http_modsecurity_request_read(ngx_http_request_t *r)
 ngx_int_t
 ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
 {
-#if 1
     ngx_pool_t                   *old_pool;
     ngx_http_modsecurity_ctx_t   *ctx;
 
@@ -209,14 +208,13 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
         ret = ngx_http_modsecurity_process_intervention(ctx, r);
         if (r->error_page) {
             return NGX_DECLINED;
-            }
+        }
         if (ret > 0) {
             return ret;
         }
     }
 
     dd("Nothing to add on the body inspection, reclaiming a NGX_DECLINED");
-#endif
     return NGX_DECLINED;
 }
 
