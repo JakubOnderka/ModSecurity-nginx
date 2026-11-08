@@ -212,13 +212,13 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
                 break;
         }
 
+        if (r->unparsed_uri.len == 0) {
+            ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "modsecurity: unparsed uri is empty");
+            return NGX_HTTP_BAD_REQUEST;
+        }
         const char *n_uri = ngx_str_to_char(r->unparsed_uri, r->pool);
         if (n_uri == (char*)-1) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
-        if (n_uri == NULL) {
-            ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "modsecurity: unparsed uri is empty");
-            return NGX_HTTP_BAD_REQUEST;
         }
 
         old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
