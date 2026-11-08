@@ -176,6 +176,13 @@ using the same unique identificator.
 
 String can contain variables.
 
+### Request body buffering
+
+The connector waits for nginx to read the complete request body, preserving
+nginx's configured buffering behavior. An in-memory body is passed to
+ModSecurity once per nginx buffer; a single-buffer body therefore needs one
+append call. A body stored in a temporary file is read through nginx's open
+file descriptor in chunks.
 
 # Contributing
 
@@ -262,5 +269,4 @@ feel free to open GitHub issues requesting for new features. Before opening a ne
 
 Having our packages in distros on time is something we highly desire. Let us know if
 there is anything we can do to facilitate your work as a packager.
-
 
