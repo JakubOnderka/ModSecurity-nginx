@@ -1,0 +1,113 @@
+name: Valgrind soak
+
+# Manual/scheduled only, not on every PR: a memcheck/helgrind soak runs
+# 10-50x slower than native. See soak/soak.sh.
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: Seconds per soak run
+        default: "120"
+      concurrency:
+        description: Concurrent traffic workers
+        default: "8"
+
+permissions:
+  contents: read
+
+# Keyed on the event too, so a manual dispatch does not cancel an in-flight
+# scheduled run (or vice versa): these runs are never superseded by a newer
+# commit the way PR runs are.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  soak:
+    name: memcheck + helgrind soak
+    runs-on: ubuntu-latest
+    env:
+      CC: ccache clang
+      CXX: ccache clang++
+    steps:
+      - name: Setup packages
+        run: |
+          sudo apt-get update -y -qq
+          sudo apt-get install -y clang libclang-rt-dev llvm make autoconf automake libtool libyajl-dev libxml2-dev libmaxminddb-dev libcurl4-gnutls-dev libssl-dev libcryptx-perl openssl ccache valgrind
+
+      - name: Restore cache compiler outputs
+        uses: actions/cache/restore@v6
+        id: ccache-restore
+        with:
+          path: ~/.cache/ccache
+          key: ccache-soak-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ccache-soak-
+
+      - name: Fetch dependencies
+        env:
+          MODSECURITY_VERSION: 3.0.17
+          NGINX_VERSION: 1.31.8
+          PCRE2_VERSION: 10.49
+        run: |
+          curl --fail --fail-early --location --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 120 \
+            https://github.com/owasp-modsecurity/ModSecurity/releases/download/v${MODSECURITY_VERSION}/modsecurity-v${MODSECURITY_VERSION}.tar.gz -o modsecurity.tar.gz \
+            https://github.com/nginx/nginx/releases/download/release-${NGINX_VERSION}/nginx-${NGINX_VERSION}.tar.gz -o nginx.tar.gz \
+            https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_VERSION}/pcre2-${PCRE2_VERSION}.tar.gz -o pcre2.tar.gz
+          mkdir ModSecurity nginx pcre2
+          tar -xzf modsecurity.tar.gz -C ModSecurity --strip-components=1
+          tar -xzf nginx.tar.gz -C nginx --strip-components=1
+          tar -xzf pcre2.tar.gz -C pcre2 --strip-components=1
+
+      - name: Build pcre2 without JIT
+        working-directory: pcre2
+        run: |
+          ./configure --disable-jit --prefix=/usr/local
+          make -j $(nproc)
+          sudo make install
+
+      - name: Build libModSecurity
+        working-directory: ModSecurity
+        run: |
+          ./build.sh
+          ./configure --without-lmdb --prefix=/usr --with-pcre2=/usr/local/ 
+          make -j $(nproc)
+          sudo make install
+
+      - name: Get connector source
+        uses: actions/checkout@v7
+        with:
+          path: ModSecurity-nginx
+          fetch-depth: 1
+
+      - name: Build nginx with ModSecurity-nginx module
+        working-directory: nginx
+        run: |
+          ./configure --with-cc-opt="-I/usr/local/include" --with-ld-opt="-L/usr/local/lib -Wl,-rpath,/usr/local/lib" --with-http_v2_module --with-http_v3_module --with-http_ssl_module --with-http_auth_request_module --add-module=../ModSecurity-nginx
+          make -j $(nproc)
+          make modules
+          sudo make install
+
+      - name: Show ccache statistics
+        run: ccache --show-stats
+          
+      - name: Run memcheck soak
+        env:
+          DURATION: ${{ inputs.duration || '120' }}
+          CONCURRENCY: ${{ inputs.concurrency || '8' }}
+          USE_VALGRIND: 1
+        run: ModSecurity-nginx/.github/soak/soak.sh /usr/local/nginx/sbin/nginx "$DURATION" "$CONCURRENCY"
+
+      - name: Run helgrind soak
+        env:
+          DURATION: ${{ inputs.duration || '120' }}
+          CONCURRENCY: ${{ inputs.concurrency || '8' }}
+          USE_HELGRIND: 1
+        run: ModSecurity-nginx/.github/soak/soak.sh /usr/local/nginx/sbin/nginx "$DURATION" "$CONCURRENCY"
+
+      - name: Save cache compiler outputs
+        if: always() && steps.ccache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path:  ~/.cache/ccache
+          key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
