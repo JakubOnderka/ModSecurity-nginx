@@ -51,18 +51,6 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
 
     dd("catching a new _preaccess_ phase handler");
 
-    /*
-     * FIXME:
-     * In order to perform some tests, let's accept everything.
-     *
-    if (r->method != NGX_HTTP_GET &&
-        r->method != NGX_HTTP_POST && r->method != NGX_HTTP_HEAD) {
-        dd("ModSecurity is not ready to deal with anything different from " \
-            "POST, GET or HEAD");
-        return NGX_DECLINED;
-    }
-    */
-
     ctx = ngx_http_modsecurity_get_module_ctx(r);
 
     dd("recovering ctx: %p", ctx);
