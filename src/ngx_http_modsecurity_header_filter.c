@@ -346,6 +346,16 @@ ngx_http_modsecurity_header_filter(ngx_http_request_t *r)
         return ngx_http_filter_finalize_request(r, &ngx_http_modsecurity_module, ret);
     }
 
+    if (r->headers_out.status == NGX_HTTP_SWITCHING_PROTOCOLS) {
+        /*
+         * The connection turns into a raw tunnel (e.g. WebSocket); there
+         * will be no more HTTP traffic, so release the transaction now.
+         */
+        ngx_http_modsecurity_log_handler(r);
+        ngx_http_modsecurity_cleanup(ctx);
+        return ngx_http_next_header_filter(r);
+    }
+
     /*
      * Proxies will not like this... but it is necessary to unset
      * the content length in order to manipulate the content of

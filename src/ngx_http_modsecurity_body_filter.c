@@ -53,6 +53,10 @@ ngx_http_modsecurity_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         return ngx_http_next_body_filter(r, in);
     }
 
+    if (ctx->modsec_transaction == NULL) {
+        return ngx_http_next_body_filter(r, in);
+    }
+
     if (ctx->intervention_triggered) {
         return ngx_http_next_body_filter(r, in);
     }
