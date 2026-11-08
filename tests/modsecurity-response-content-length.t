@@ -28,6 +28,7 @@ http {
                 SecRule RESPONSE_HEADERS:Content-Length "@streq 0" "id:101,phase:3,deny,status:403"
             ';
         }
+    }
 }
 EOF
 $t->write_file('empty', '');
