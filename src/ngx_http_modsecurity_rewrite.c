@@ -195,6 +195,9 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
             case NGX_HTTP_POST:
                 n_method = "POST";
                 break;
+            case NGX_HTTP_PUT:
+                n_method = "PUT";
+                break;
             case NGX_HTTP_OPTIONS:
                 n_method = "OPTIONS";
                 break;
