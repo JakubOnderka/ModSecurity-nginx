@@ -25,9 +25,6 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
-#ifdef _MSC_VER
-#define strdup _strdup
-#endif
 
 static ngx_int_t ngx_http_modsecurity_init(ngx_conf_t *cf);
 static void *ngx_http_modsecurity_create_main_conf(ngx_conf_t *cf);
@@ -136,6 +133,21 @@ ngx_inline char *ngx_str_to_char(ngx_str_t a, ngx_pool_t *p)
     str[a.len] = '\0';
 
     return str;
+}
+
+
+static void
+ngx_http_modsecurity_handle_error(ngx_conf_t *cf, const char *error)
+{
+    if (error == NULL) {
+        return;
+    }
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "modsecurity: %s", error);
+#if defined(MODSECURITY_CHECK_VERSION) && (MODSECURITY_VERSION_NUM >= 30130100)
+    msc_rules_error_cleanup(error);
+#else
+    free((void *) error);
+#endif
 }
 
 
@@ -374,8 +386,8 @@ ngx_conf_set_rules(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_http_modsecurity_pcre_malloc_done(old_pool);
 
     if (res < 0) {
-        dd("Failed to load the rules: '%s' - reason: '%s'", rules, error);
-        return strdup(error);
+        ngx_http_modsecurity_handle_error(cf, error);
+        return NGX_CONF_ERROR;
     }
 
     mmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_modsecurity_module);
@@ -408,8 +420,8 @@ ngx_conf_set_rules_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_http_modsecurity_pcre_malloc_done(old_pool);
 
     if (res < 0) {
-        dd("Failed to load the rules from: '%s' - reason: '%s'", rules_set, error);
-        return strdup(error);
+        ngx_http_modsecurity_handle_error(cf, error);
+        return NGX_CONF_ERROR;
     }
 
     mmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_modsecurity_module);
@@ -447,8 +459,8 @@ ngx_conf_set_rules_remote(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_http_modsecurity_pcre_malloc_done(old_pool);
 
     if (res < 0) {
-        dd("Failed to load the rules from: '%s'  - reason: '%s'", rules_remote_server, error);
-        return strdup(error);
+        ngx_http_modsecurity_handle_error(cf, error);
+        return NGX_CONF_ERROR;
     }
 
     mmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_modsecurity_module);
@@ -795,7 +807,8 @@ ngx_http_modsecurity_merge_conf(ngx_conf_t *cf, void *parent, void *child)
     rules = msc_rules_merge(c->rules_set, p->rules_set, &error);
 
     if (rules < 0) {
-        return strdup(error);
+        ngx_http_modsecurity_handle_error(cf, error);
+        return NGX_CONF_ERROR;
     }
 
 #if defined(MODSECURITY_DDEBUG) && (MODSECURITY_DDEBUG)
