@@ -253,7 +253,12 @@ ngx_http_modsecurity_cleanup(void *data)
 
     ctx = (ngx_http_modsecurity_ctx_t *) data;
 
+    if (ctx->modsec_transaction == NULL) {
+        return;
+    }
+
     msc_transaction_cleanup(ctx->modsec_transaction);
+    ctx->modsec_transaction = NULL;
 }
 
 
