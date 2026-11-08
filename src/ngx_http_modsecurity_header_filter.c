@@ -84,9 +84,11 @@ static void
 ngx_http_modsecurity_resolv_header_content_length(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
     ngx_str_t value;
-    char buf[NGX_INT64_LEN+2];
+    char buf[NGX_OFF_T_LEN];
 
-    if (r->headers_out.content_length_n > 0) {
+    if (r->headers_out.content_length == NULL
+        && r->headers_out.content_length_n >= 0)
+    {
         value.len = (int)(ngx_sprintf((u_char *)buf, "%O", r->headers_out.content_length_n) - (u_char *)buf);
         value.data = (unsigned char *)buf;
 
