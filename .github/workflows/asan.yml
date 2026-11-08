@@ -13,15 +13,22 @@ jobs:
   asan:
     runs-on: ubuntu-24.04
     env:
-      CC: clang
-      CXX: clang++
+      CC: ccache clang
+      CXX: ccache clang++
       SANITIZER_FLAGS: "-O1 -g -fsanitize=address -fno-omit-frame-pointer -fno-optimize-sibling-calls"
       ASAN_OPTIONS: "detect_leaks=0:abort_on_error=1"
     steps:
       - name: Setup Dependencies
         run: |
           sudo apt-get update -y -qq
-          sudo apt-get install -y clang libclang-rt-dev llvm make autoconf automake libtool libpcre2-dev libyajl-dev libxml2-dev libmaxminddb-dev libcurl4-gnutls-dev libssl-dev libcryptx-perl openssl
+          sudo apt-get install -y clang libclang-rt-dev llvm make autoconf automake libtool libpcre2-dev libyajl-dev libxml2-dev libmaxminddb-dev libcurl4-gnutls-dev libssl-dev libcryptx-perl openssl ccache
+      - name: Cache compiler outputs
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ccache
+          key: ccache-asan-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ccache-asan-
       - name: Get libModSecurity source
         run: |
           curl --fail --location --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 120 https://github.com/owasp-modsecurity/ModSecurity/releases/download/v3.0.17/modsecurity-v3.0.17.tar.gz -o modsecurity.tar.gz
@@ -70,6 +77,8 @@ jobs:
             --add-module=../ModSecurity-nginx
           make -j $(nproc)
           make modules
+      - name: Show ccache statistics
+        run: ccache --show-stats
       - name: Run connector tests under ASan
         working-directory: nginx/test
         shell: bash
