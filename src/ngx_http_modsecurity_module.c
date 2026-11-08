@@ -338,7 +338,7 @@ ngx_http_modsecurity_get_module_ctx(ngx_http_request_t *r)
 {
     ngx_http_modsecurity_ctx_t *ctx;
     ctx = ngx_http_get_module_ctx(r, ngx_http_modsecurity_module);
-    if (ctx == NULL && (r->internal || r->filter_finalize)) {
+    if (ctx == NULL && (r->internal || r->filter_finalize) && r == r->main) {
         /*
          * refer <nginx>/src/http/modules/ngx_http_realip_module.c
          * if module context was reset, the original address
