@@ -34,7 +34,7 @@ jobs:
             ccache-${{ matrix.os }}-${{ matrix.compiler }}-
       - name: Get libModSecurity source
         run: |
-          curl -L https://github.com/owasp-modsecurity/ModSecurity/releases/download/v3.0.17/modsecurity-v3.0.17.tar.gz -o modsecurity.tar.gz
+          curl --fail --location --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 120 https://github.com/owasp-modsecurity/ModSecurity/releases/download/v3.0.17/modsecurity-v3.0.17.tar.gz -o modsecurity.tar.gz
           mkdir ModSecurity
           tar -xzf modsecurity.tar.gz -C ModSecurity --strip-components=1
       - name: Build libModSecurity
