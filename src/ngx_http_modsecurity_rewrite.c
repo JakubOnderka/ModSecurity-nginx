@@ -76,10 +76,20 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
         int client_port = ngx_inet_get_port(connection->sockaddr);
         int server_port = ngx_inet_get_port(connection->local_sockaddr);
 
-        const char *client_addr = ngx_str_to_char(connection->addr_text, r->pool);
-        if (client_addr == (char*)-1) {
+        // Convert client address to null terminated string without allocation
+        u_char client_addr[NGX_SOCKADDR_STRLEN + 1];
+        ngx_memcpy(client_addr, connection->addr_text.data, connection->addr_text.len);
+        client_addr[connection->addr_text.len] = '\0';
+
+        // Convert local address to server_addr with null termination
+        ngx_str_t s;
+        u_char server_addr[NGX_SOCKADDR_STRLEN + 1];
+        s.len = NGX_SOCKADDR_STRLEN;
+        s.data = server_addr;
+        if (ngx_connection_local_sockaddr(r->connection, &s, 0) != NGX_OK) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
+        server_addr[s.len] = '\0';
 
 #if defined(MODSECURITY_CHECK_VERSION) && MODSECURITY_VERSION_NUM >= 30130100
         ngx_str_t hostname;
@@ -118,19 +128,9 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
         }
 #endif
 
-        // Convert local address to server_addr with null termination
-        ngx_str_t s;
-        u_char server_addr[NGX_SOCKADDR_STRLEN + 1];
-        s.len = NGX_SOCKADDR_STRLEN;
-        s.data = server_addr;
-        if (ngx_connection_local_sockaddr(r->connection, &s, 0) != NGX_OK) {
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
-        server_addr[s.len] = '\0';
-
         old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
         msc_process_connection(ctx->modsec_transaction,
-            client_addr, client_port,
+            (const char *) client_addr, client_port,
             (const char *) server_addr, server_port);
         ngx_http_modsecurity_pcre_malloc_done(old_pool);
         /**
