@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# Tests for Date headers supplied to phase-three rules.
+# Tests for Server headers supplied to phase-three rules.
 
 use warnings;
 use strict;
