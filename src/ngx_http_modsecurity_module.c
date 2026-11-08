@@ -220,11 +220,6 @@ ngx_http_modsecurity_process_intervention (ngx_http_modsecurity_ctx_t *ctx, ngx_
         location->value = a;
         r->headers_out.location = location;
         r->headers_out.location->hash = 1;
-
-#if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
-        ngx_http_modsecurity_store_ctx_header(r, &location->key, &location->value);
-#endif
-
         return intervention.status;
     }
 
@@ -259,14 +254,6 @@ ngx_http_modsecurity_cleanup(void *data)
     ctx = (ngx_http_modsecurity_ctx_t *) data;
 
     msc_transaction_cleanup(ctx->modsec_transaction);
-
-#if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
-    /*
-     * Purge stored context headers.  Memory allocated for individual stored header
-     * name/value pair will be freed automatically when r->pool is destroyed.
-     */
-    ngx_array_destroy(ctx->sanity_headers_out);
-#endif
 }
 
 
@@ -323,13 +310,6 @@ ngx_http_modsecurity_create_ctx(ngx_http_request_t *r)
     }
     cln->handler = ngx_http_modsecurity_cleanup;
     cln->data = ctx;
-
-#if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
-    ctx->sanity_headers_out = ngx_array_create(r->pool, 12, sizeof(ngx_http_modsecurity_header_t));
-    if (ctx->sanity_headers_out == NULL) {
-        return NULL;
-    }
-#endif
 
     ngx_http_set_ctx(r, ctx, ngx_http_modsecurity_module);
 
@@ -753,7 +733,6 @@ ngx_http_modsecurity_create_conf(ngx_conf_t *cf)
      * set by ngx_pcalloc():
      *
      *     conf->enable = 0;
-     *     conf->sanity_checks_enabled = 0;
      *     conf->rules_set = NULL;
      *     conf->pool = NULL;
      *     conf->transaction_id = NULL;
@@ -764,9 +743,6 @@ ngx_http_modsecurity_create_conf(ngx_conf_t *cf)
     conf->pool = cf->pool;
     conf->transaction_id = NGX_CONF_UNSET_PTR;
     conf->error_log = NGX_CONF_UNSET;
-#if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
-    conf->sanity_checks_enabled = NGX_CONF_UNSET;
-#endif
 
     cln = ngx_pool_cleanup_add(cf->pool, 0);
     if (cln == NULL) {
@@ -804,9 +780,6 @@ ngx_http_modsecurity_merge_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_value(c->enable, p->enable, 0);
     ngx_conf_merge_ptr_value(c->transaction_id, p->transaction_id, NULL);
     ngx_conf_merge_value(c->error_log, p->error_log, 1);
-#if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
-    ngx_conf_merge_value(c->sanity_checks_enabled, p->sanity_checks_enabled, 0);
-#endif
 
 #if defined(MODSECURITY_DDEBUG) && (MODSECURITY_DDEBUG)
     dd("PARENT RULES");

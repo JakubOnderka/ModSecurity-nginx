@@ -80,18 +80,6 @@ typedef struct {
 typedef struct {
     Transaction *modsec_transaction;
 
-#if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
-    /*
-     * Should be filled with the headers that were sent to ModSecurity.
-     *
-     * The idea is to compare this set of headers with the headers that were
-     * sent to the client. This check was placed because we don't have control
-     * over other modules, thus, we may partially inspect the headers.
-     *
-     */
-    ngx_array_t *sanity_headers_out;
-#endif
-
     unsigned waiting_more_body:1;
     unsigned body_requested:1;
     unsigned processed:1;
@@ -117,9 +105,6 @@ typedef struct {
 
     ngx_flag_t                 enable;
     ngx_flag_t                 error_log;
-#if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
-    ngx_flag_t                 sanity_checks_enabled;
-#endif
 
     ngx_http_complex_value_t  *transaction_id;
 } ngx_http_modsecurity_conf_t;
@@ -146,9 +131,6 @@ ngx_int_t ngx_http_modsecurity_body_filter(ngx_http_request_t *r, ngx_chain_t *i
 /* ngx_http_modsecurity_header_filter.c */
 ngx_int_t ngx_http_modsecurity_header_filter_init(void);
 ngx_int_t ngx_http_modsecurity_header_filter(ngx_http_request_t *r);
-#if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
-int ngx_http_modsecurity_store_ctx_header(ngx_http_request_t *r, ngx_str_t *name, ngx_str_t *value);
-#endif
 
 /* ngx_http_modsecurity_log.c */
 void ngx_http_modsecurity_log(void *log, const void* data);
