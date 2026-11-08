@@ -21,7 +21,7 @@ jobs:
         CXX: "ccache /usr/bin/${{ matrix.compiler == 'gcc' && 'g' || 'clang' }}++"
         COMPDEPS: "${{ matrix.compiler == 'gcc' && 'gcc g++' || 'clang' }}"
     steps:
-      - name: Setup Dependencies
+      - name: Setup packages
         run: |
           sudo apt-get update -y -qq
           sudo apt-get install -y make autoconf automake make libpcre2-dev libyajl-dev libxml2-dev libmaxminddb-dev libcurl4-gnutls-dev libssl-dev libcryptx-perl openssl ccache $COMPDEPS
@@ -32,11 +32,16 @@ jobs:
           key: ccache-${{ matrix.os }}-${{ matrix.compiler }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             ccache-${{ matrix.os }}-${{ matrix.compiler }}-
-      - name: Get libModSecurity source
+      - name: Fetch dependencies
         run: |
-          curl --fail --location --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 120 https://github.com/owasp-modsecurity/ModSecurity/releases/download/v3.0.17/modsecurity-v3.0.17.tar.gz -o modsecurity.tar.gz
-          mkdir ModSecurity
+          curl --fail --fail-early --location --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 120 \
+            https://github.com/owasp-modsecurity/ModSecurity/releases/download/v3.0.17/modsecurity-v3.0.17.tar.gz -o modsecurity.tar.gz \
+            https://github.com/nginx/nginx/releases/download/release-1.31.8/nginx-1.31.8.tar.gz -o nginx.tar.gz \
+            https://github.com/nginx/nginx-tests/archive/refs/heads/master.tar.gz -o nginx-tests.tar.gz
+          mkdir ModSecurity nginx nginx/test
           tar -xzf modsecurity.tar.gz -C ModSecurity --strip-components=1
+          tar -xzf nginx.tar.gz -C nginx --strip-components=1
+          tar -xzf nginx-tests.tar.gz -C nginx/test --strip-components=1
       - name: Build libModSecurity
         working-directory: ModSecurity
         run: |
@@ -48,25 +53,13 @@ jobs:
         with:
           path: ModSecurity-nginx
           fetch-depth: 1
-      - name: Get Nginx source
-        uses: actions/checkout@v7
-        with:
-          repository: nginx/nginx
-          path: nginx
-          fetch-depth: 1
-      - name: Get Nginx tests
-        uses: actions/checkout@v7
-        with:
-          repository: nginx/nginx-tests
-          path: nginx/test
-          fetch-depth: 1
       - name: Copy ModSecurity-nginx tests to nginx/test
         run: |
           cp ModSecurity-nginx/tests/* nginx/test
       - name: Build nginx with ModSecurity-nginx module
         working-directory: nginx
         run: |
-          ./auto/configure --with-ld-opt="-Wl,-rpath,/usr/local/lib" --with-http_v2_module --with-http_v3_module --with-http_ssl_module --with-http_auth_request_module --add-module=../ModSecurity-nginx
+          ./configure --with-ld-opt="-Wl,-rpath,/usr/local/lib" --with-http_v2_module --with-http_v3_module --with-http_ssl_module --with-http_auth_request_module --add-module=../ModSecurity-nginx
           make -j $(nproc)
           make modules
           sudo make install
