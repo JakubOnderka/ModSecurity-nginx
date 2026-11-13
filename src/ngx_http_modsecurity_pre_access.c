@@ -45,6 +45,7 @@ ngx_http_modsecurity_request_read(ngx_http_request_t *r)
 ngx_int_t
 ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
 {
+    int                           ret;
     ngx_pool_t                   *old_pool;
     ngx_http_modsecurity_ctx_t   *ctx;
 
@@ -61,7 +62,6 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
     }
 
     if (ctx->request_body_processed) {
-        // should we use r->internal or r->filter_finalize?
         return NGX_DECLINED;
     }
 
@@ -85,14 +85,6 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
 
         dd("asking for the request body, if any. Count: %d",
             r->main->count);
-        /**
-         * Preserve nginx's configured buffering behavior instead of forcing a
-         * full-body single-buffer layout. Forcing those flags makes the body
-         * wait in memory or a temp file until the whole request is read, which
-         * defeats incremental inspection and can hurt throughput for large
-         * uploads.
-         */
-
         rc = ngx_http_read_client_request_body(r,
             ngx_http_modsecurity_request_read);
         if (rc == NGX_ERROR || rc >= NGX_HTTP_SPECIAL_RESPONSE) {
@@ -112,62 +104,44 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
         }
     }
 
-    if (ctx->waiting_more_body == 0)
-    {
-        int ret = 0;
-        int already_inspected = 0;
+    dd("request body is ready to be processed");
 
-        dd("request body is ready to be processed");
+    r->write_event_handler = ngx_http_core_run_phases;
 
-        r->write_event_handler = ngx_http_core_run_phases;
+    if (r->request_body->temp_file != NULL) {
+        ngx_temp_file_t *temp_file = r->request_body->temp_file;
+        off_t offset = 0;
+        u_char buffer[8192];
 
-        ngx_chain_t *chain = r->request_body->bufs;
+        /* Ordinary spill files may already be unlinked on Unix. */
+        while (offset < temp_file->offset) {
+            size_t size = (size_t) ngx_min(
+                (off_t) sizeof(buffer), temp_file->offset - offset);
+            ssize_t n = ngx_read_file(&temp_file->file, buffer, size,
+                offset);
 
-        /**
-         * TODO: Speed up the analysis by sending chunk while they arrive.
-         *
-         * Notice that we are waiting for the full request body to
-         * start to process it, it may not be necessary. We may send
-         * the chunks to ModSecurity while nginx keep calling this
-         * function.
-         */
-
-        if (r->request_body->temp_file != NULL) {
-            ngx_temp_file_t *temp_file = r->request_body->temp_file;
-            off_t offset = 0;
-            u_char buffer[8192];
-            
-            /* Ordinary spill files may already be unlinked on Unix. */
-            while (offset < temp_file->offset) {
-                size_t size = (size_t) ngx_min(
-                    (off_t) sizeof(buffer), temp_file->offset - offset);
-                ssize_t n = ngx_read_file(&temp_file->file, buffer, size,
-                    offset);
-
-                if (n == NGX_ERROR || n == 0) {
-                    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "modsecurity: failed to read request body file "
-                        "\"%V\" at offset %O", &temp_file->file.name, offset);
-                    return NGX_HTTP_INTERNAL_SERVER_ERROR;
-                }
-
-                msc_append_request_body(ctx->modsec_transaction, buffer,
-                    (size_t) n);
-                offset += n;
-
-                ret = ngx_http_modsecurity_process_intervention(ctx, r);
-                if (ret > 0) {
-                    return ret;
-                }
+            if (n == NGX_ERROR || n == 0) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                    "modsecurity: failed to read request body file "
+                    "\"%V\" at offset %O", &temp_file->file.name, offset);
+                return NGX_HTTP_INTERNAL_SERVER_ERROR;
             }
 
-            already_inspected = 1;
-        } else {
-            dd("inspection request body in memory.");
-        }
+            msc_append_request_body(ctx->modsec_transaction, buffer,
+                (size_t) n);
+            offset += n;
 
-        while (chain && !already_inspected)
-        {
+            ret = ngx_http_modsecurity_process_intervention(ctx, r);
+            if (ret > 0) {
+                return ret;
+            }
+        }
+    } else {
+        ngx_chain_t *chain = r->request_body->bufs;
+
+        dd("inspection request body in memory.");
+
+        while (chain) {
             u_char *data = chain->buf->pos;
 
             msc_append_request_body(ctx->modsec_transaction, data,
@@ -178,43 +152,26 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
             }
             chain = chain->next;
 
-/* XXX: chains are processed one-by-one, maybe worth to pass all chains and then call intervention() ? */
-
-            /**
-             * ModSecurity may perform stream inspection on this buffer,
-             * it may ask for a intervention in consequence of that.
-             *
-             */
             ret = ngx_http_modsecurity_process_intervention(ctx, r);
             if (ret > 0) {
                 return ret;
             }
         }
+    }
 
-        /**
-         * At this point, all the request body was sent to ModSecurity
-         * and we want to make sure that all the request body inspection
-         * happened; consequently we have to check if ModSecurity have
-         * returned any kind of intervention.
-         */
+    old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
+    msc_process_request_body(ctx->modsec_transaction);
+    ctx->request_body_processed = 1;
+    ngx_http_modsecurity_pcre_malloc_done(old_pool);
 
-/* XXX: once more -- is body can be modified ?  content-length need to be adjusted ? */
-
-        old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
-        msc_process_request_body(ctx->modsec_transaction);
-        ctx->request_body_processed = 1;
-        ngx_http_modsecurity_pcre_malloc_done(old_pool);
-
-        ret = ngx_http_modsecurity_process_intervention(ctx, r);
-        if (r->error_page) {
-            return NGX_DECLINED;
-        }
-        if (ret > 0) {
-            return ret;
-        }
+    ret = ngx_http_modsecurity_process_intervention(ctx, r);
+    if (r->error_page) {
+        return NGX_DECLINED;
+    }
+    if (ret > 0) {
+        return ret;
     }
 
     dd("Nothing to add on the body inspection, reclaiming a NGX_DECLINED");
     return NGX_DECLINED;
 }
-

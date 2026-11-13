@@ -71,6 +71,33 @@ http {
             proxy_pass http://127.0.0.1:%%PORT_8081%%;
         }
 
+        location /bodycontiguous {
+            client_body_buffer_size 64k;
+            modsecurity_rules '
+                SecRuleEngine On
+                SecRequestBodyAccess On
+                SecDebugLog %%TESTDIR%%/body-debug.log
+                SecDebugLogLevel 9
+            ';
+            proxy_pass http://127.0.0.1:%%PORT_8081%%;
+        }
+
+        location /bodyredirect {
+            client_body_buffer_size 128;
+            modsecurity_rules '
+                SecRuleEngine On
+                SecRequestBodyAccess On
+                SecAction "id:14,phase:2,pass,nolog,setvar:tx.body_passes=+1"
+                SecRule TX:body_passes "@gt 1" "id:15,phase:2,deny,status:403"
+                SecRule REQUEST_BODY "@contains BAD BODY" "id:16,phase:2,deny,status:403"
+            ';
+            try_files /does-not-exist @body_sink;
+        }
+
+        location @body_sink {
+            proxy_pass http://127.0.0.1:%%PORT_8081%%;
+        }
+
         location /nobodyaccess {
             modsecurity_rules '
                 SecRuleEngine On
@@ -143,7 +170,7 @@ EOF
 $t->run_daemon(\&http_daemon);
 $t->run()->waitforsocket('127.0.0.1:' . port(8081));
 
-$t->plan(45);
+$t->plan(51);
 
 ###############################################################################
 
@@ -165,6 +192,30 @@ like(http_req_body('POST', '/useauth', 'BODY' x 16), qr/TEST-OK-IF-YOU-SEE-THIS/
 like(http_req_body('POST', '/useauth', 'BODY' x 257), qr/TEST-OK-IF-YOU-SEE-THIS/, "POST with auth_request (request size > client_header_buffer_size)");
 like(http_req_body('POST', '/bodyaccesssmallbuffer', 'GOODGOODGOODBAD BODY'), qr/^HTTP.*403/, 'POST request body access on, block (client body spills to temp file)');
 like(http_req_body('POST', '/bodylimitreject', 'BODY' x 32 . 'X'), qr/^HTTP.*403/, 'POST request body limit reject, block (one byte over limit)');
+
+like(http_req_body('POST', '/bodycontiguous', 'GOOD BODY'),
+        qr/TEST-OK-IF-YOU-SEE-THIS/, 'contiguous body passes');
+my $body_debug = $t->read_file('body-debug.log');
+my @body_appends = ($body_debug =~ /Appending request body: (\d+) bytes/g);
+is_deeply(\@body_appends, [9], 'contiguous body appended in one call');
+
+like(http_req_body('POST', '/bodyredirect', 'GOOD BODY'),
+        qr/TEST-OK-IF-YOU-SEE-THIS/, 'body inspected once across named redirect');
+like(http_req_body('POST', '/bodyredirect', 'GOOD' x 300),
+        qr/TEST-OK-IF-YOU-SEE-THIS/, 'spilled body inspected once across named redirect');
+like(http_req_body('POST', '/bodyredirect', 'BAD BODY'),
+        qr/^HTTP.*403/, 'body denied before named redirect');
+like(
+        http(
+                'POST /bodyredirect HTTP/1.0' . CRLF
+                . 'Content-Length: 9' . CRLF . CRLF
+                . 'GOOD ',
+                sleep => 0.1,
+                body => 'BODY'
+        ),
+        qr/TEST-OK-IF-YOU-SEE-THIS/,
+        'asynchronously read body inspected once across named redirect'
+);
 
 like(
         http(
@@ -233,6 +284,16 @@ sub http_daemon {
 		}
 
 		$uri = $1 if $headers =~ /^\S+\s+([^ ]+)\s+HTTP/i;
+
+		if ($headers =~ /^Content-Length:\s*(\d+)/im) {
+			my $remaining = $1;
+			while ($remaining > 0) {
+				my $n = read($client, my $body, $remaining);
+				die "Can't read upstream request body\n"
+					unless defined $n && $n > 0;
+				$remaining -= $n;
+			}
+		}
 
 		print $client <<'EOF';
 HTTP/1.1 200 OK
