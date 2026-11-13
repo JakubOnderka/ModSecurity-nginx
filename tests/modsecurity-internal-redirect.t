@@ -17,7 +17,7 @@
 
 # Tests for ModSecurity module (module context recovery after the request
 # context has been discarded: internal redirects, named locations and
-# filter finalization).
+# filter finalization, including reuse of the recovered context by body filters).
 
 ###############################################################################
 
@@ -57,9 +57,12 @@ http {
         modsecurity on;
         modsecurity_rules '
             SecRuleEngine On
+            SecResponseBodyAccess On
+            SecResponseBodyMimeType text/plain text/html
             SecRule ARGS:what "@streq bad" "id:91,phase:1,deny,status:403,log,auditlog"
             SecRule RESPONSE_HEADERS:X-Fallback "@streq yes" "id:92,phase:3,log,auditlog,pass"
             SecRule ARGS:what "@streq precond" "id:93,phase:1,log,auditlog,pass"
+            SecRule RESPONSE_BODY "@rx FALLBACK|NAMED" "id:94,phase:4,log,auditlog,pass"
             SecAuditEngine RelevantOnly
             SecAuditLogParts ABH
             SecAuditLog %%TESTDIR%%/audit.txt
@@ -85,6 +88,17 @@ http {
             return 200 "NAMED";
         }
 
+        location /off/ {
+            try_files $uri /off-fallback;
+        }
+
+        location = /off-fallback {
+            modsecurity off;
+            internal;
+            alias %%TESTDIR%%/fallback;
+            add_header X-Fallback yes;
+        }
+
         location /static {
         }
     }
@@ -96,13 +110,15 @@ $t->write_file('fallback', 'FALLBACK');
 mkdir($t->testdir() . '/static');
 $t->write_file('static/precond.html', 'PRECOND');
 $t->run();
-$t->plan(8);
+$t->plan(11);
 
 ###############################################################################
 
 like(http_get('/missing?what=ok'), qr/FALLBACK/, 'try_files fallback served');
 like(http_get('/missing?what=bad'), qr/^HTTP.*403/, 'phase 1 deny before try_files');
 like(http_get('/named/missing?what=ok'), qr/NAMED/, 'named location served');
+like(http_get('/off/missing?what=ok'), qr/FALLBACK/,
+    'redirect to location with ModSecurity disabled served');
 
 # a failed precondition makes the not modified filter call
 # ngx_http_filter_finalize_request(), which discards the module contexts
@@ -127,7 +143,10 @@ my $audit = do {
 like($audit, qr/\[id "92"\]/, 'phase 3 ran after internal redirect (ctx recovered)');
 like($audit, qr/\[id "91"\]/, 'deny audited');
 my @p3 = ($audit =~ /\[id "92"\]/g);
-is(scalar @p3, 2, 'phase 3 logged once per redirected request');
+is(scalar @p3, 3, 'phase 3 logged once per redirected request');
+like($audit, qr/\[id "94"\]/, 'phase 4 reused the recovered context');
+my @p4 = ($audit =~ /\[id "94"\]/g);
+is(scalar @p4, 3, 'phase 4 logged once per redirected request');
 like($audit, qr/\[id "93"\]/, 'logging phase ran after filter finalization');
 
 ###############################################################################

@@ -27,7 +27,7 @@ ngx_http_modsecurity_request_read(ngx_http_request_t *r)
 {
     ngx_http_modsecurity_ctx_t *ctx;
 
-    ctx = ngx_http_modsecurity_get_module_ctx(r);
+    ctx = ngx_http_get_module_ctx(r, ngx_http_modsecurity_module);
 
 #if defined(nginx_version) && nginx_version >= 8011
     r->main->count--;
@@ -50,7 +50,7 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
 
     dd("catching a new _preaccess_ phase handler");
 
-    ctx = ngx_http_modsecurity_get_module_ctx(r);
+    ctx = ngx_http_get_module_ctx(r, ngx_http_modsecurity_module);
 
     dd("recovering ctx: %p", ctx);
 

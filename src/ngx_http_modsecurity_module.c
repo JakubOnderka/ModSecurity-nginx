@@ -351,11 +351,14 @@ ngx_http_modsecurity_get_module_ctx(ngx_http_request_t *r)
          * set as well.  Every other request still has its context, so the
          * cleanup list is not walked: the filters run for every response on
          * the server, including locations where modsecurity is off.
+         * Restore the context so later phases and body filter calls can use
+         * ngx_http_get_module_ctx() without scanning the cleanup list again.
          */
         ngx_pool_cleanup_t *cln;
         for (cln = r->pool->cleanup; cln; cln = cln->next) {
             if (cln->handler == ngx_http_modsecurity_cleanup) {
                 ctx = cln->data;
+                ngx_http_set_ctx(r, ctx, ngx_http_modsecurity_module);
                 break;
             }
         }
