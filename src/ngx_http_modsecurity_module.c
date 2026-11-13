@@ -363,6 +363,37 @@ ngx_http_modsecurity_get_module_ctx(ngx_http_request_t *r)
     return ctx;
 }
 
+
+static ngx_int_t
+ngx_http_modsecurity_own_rules_set(ngx_conf_t *cf, ngx_http_modsecurity_conf_t *mcf)
+{
+    ngx_pool_cleanup_t  *cln;
+
+    if (mcf->rules_set != NULL) {
+        return NGX_OK;
+    }
+
+    cln = ngx_pool_cleanup_add(cf->pool, 0);
+    if (cln == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "modsecurity: failed to create configuration cleanup");
+        return NGX_ERROR;
+    }
+
+    mcf->rules_set = msc_create_rules_set();
+    if (mcf->rules_set == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "modsecurity: failed to create ruleset");
+        return NGX_ERROR;
+    }
+
+    cln->handler = ngx_http_modsecurity_cleanup_rules;
+    cln->data = mcf;
+
+    return NGX_OK;
+}
+
+
 char *
 ngx_conf_set_rules(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
@@ -378,6 +409,10 @@ ngx_conf_set_rules(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     rules = ngx_str_to_char(value[1], cf->pool);
 
     if (rules == (char *)-1) {
+        return NGX_CONF_ERROR;
+    }
+
+    if (ngx_http_modsecurity_own_rules_set(cf, mcf) != NGX_OK) {
         return NGX_CONF_ERROR;
     }
 
@@ -412,6 +447,10 @@ ngx_conf_set_rules_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     rules_set = ngx_str_to_char(value[1], cf->pool);
 
     if (rules_set == (char *)-1) {
+        return NGX_CONF_ERROR;
+    }
+
+    if (ngx_http_modsecurity_own_rules_set(cf, mcf) != NGX_OK) {
         return NGX_CONF_ERROR;
     }
 
@@ -451,6 +490,10 @@ ngx_conf_set_rules_remote(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
 
     if (rules_remote_key == (char *)-1) {
+        return NGX_CONF_ERROR;
+    }
+
+    if (ngx_http_modsecurity_own_rules_set(cf, mcf) != NGX_OK) {
         return NGX_CONF_ERROR;
     }
 
@@ -734,7 +777,6 @@ ngx_http_modsecurity_init_main_conf(ngx_conf_t *cf, void *conf)
 static void *
 ngx_http_modsecurity_create_conf(ngx_conf_t *cf)
 {
-    ngx_pool_cleanup_t           *cln;
     ngx_http_modsecurity_conf_t  *conf;
 
     conf = (ngx_http_modsecurity_conf_t *) ngx_pcalloc(cf->pool,
@@ -756,19 +798,10 @@ ngx_http_modsecurity_create_conf(ngx_conf_t *cf)
      */
 
     conf->enable = NGX_CONF_UNSET;
-    conf->rules_set = msc_create_rules_set();
+    /* rules_set stays NULL until a rules directive, see own_rules_set(). */
     conf->pool = cf->pool;
     conf->transaction_id = NGX_CONF_UNSET_PTR;
     conf->error_log = NGX_CONF_UNSET;
-
-    cln = ngx_pool_cleanup_add(cf->pool, 0);
-    if (cln == NULL) {
-        dd("failed to create the ModSecurity configuration cleanup");
-        return NGX_CONF_ERROR;
-    }
-
-    cln->handler = ngx_http_modsecurity_cleanup_rules;
-    cln->data = conf;
 
     dd ("conf created at: '%p'", conf);
 
@@ -798,23 +831,36 @@ ngx_http_modsecurity_merge_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_ptr_value(c->transaction_id, p->transaction_id, NULL);
     ngx_conf_merge_value(c->error_log, p->error_log, 1);
 
-#if defined(MODSECURITY_DDEBUG) && (MODSECURITY_DDEBUG)
-    dd("PARENT RULES");
-    msc_rules_dump(p->rules_set);
-    dd("CHILD RULES");
-    msc_rules_dump(c->rules_set);
-#endif
-    rules = msc_rules_merge(c->rules_set, p->rules_set, &error);
-
-    if (rules < 0) {
-        ngx_http_modsecurity_handle_error(cf, error);
+    /* Transactions need a RulesSet, even when the parent declares no rules. */
+    if (p->rules_set == NULL
+        && ngx_http_modsecurity_own_rules_set(cf, p) != NGX_OK)
+    {
         return NGX_CONF_ERROR;
     }
 
+    /* Blocks without local rules can share the immutable inherited RulesSet. */
+    if (c->rules_set == NULL) {
+        c->rules_set = p->rules_set;
+    } else {
 #if defined(MODSECURITY_DDEBUG) && (MODSECURITY_DDEBUG)
-    dd("NEW CHILD RULES");
-    msc_rules_dump(c->rules_set);
+        dd("PARENT RULES");
+        msc_rules_dump(p->rules_set);
+        dd("CHILD RULES");
+        msc_rules_dump(c->rules_set);
 #endif
+        rules = msc_rules_merge(c->rules_set, p->rules_set, &error);
+
+        if (rules < 0) {
+            ngx_http_modsecurity_handle_error(cf, error);
+            return NGX_CONF_ERROR;
+        }
+
+#if defined(MODSECURITY_DDEBUG) && (MODSECURITY_DDEBUG)
+        dd("NEW CHILD RULES");
+        msc_rules_dump(c->rules_set);
+#endif
+    }
+
     return NGX_CONF_OK;
 }
 
