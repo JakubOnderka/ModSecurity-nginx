@@ -29,19 +29,19 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
     ngx_http_modsecurity_ctx_t   *ctx;
     ngx_http_modsecurity_conf_t  *mcf;
 
+    if (r != r->main) {
+        return NGX_DECLINED;
+    }
+
+    ctx = ngx_http_modsecurity_get_module_ctx(r);
+
     mcf = ngx_http_get_module_loc_conf(r, ngx_http_modsecurity_module);
     if (mcf == NULL || mcf->enable != 1) {
         dd("ModSecurity not enabled... returning");
         return NGX_DECLINED;
     }
 
-    if (r != r->main) {
-        return NGX_DECLINED;
-    }
-
     dd("catching a new _rewrite_ phase handler");
-
-    ctx = ngx_http_modsecurity_get_module_ctx(r);
 
     dd("recovering ctx: %p", ctx);
 
