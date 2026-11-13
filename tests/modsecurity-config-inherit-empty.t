@@ -70,7 +70,7 @@ $t->plan(3);
 like(http_get('/rules?a=local'), qr/403/, 'child rules work with empty http parent ruleset');
 like(http_get('/sibling?a=local'), qr/TEST-OK-IF-YOU-SEE-THIS/,
     'child rules do not leak into sibling with empty parent ruleset');
-like(http_request('GET', '/', port(8081)), qr/TEST-OK-IF-YOU-SEE-THIS/,
+like(http_request('GET', '/?a=local', port(8081)), qr/TEST-OK-IF-YOU-SEE-THIS/,
     'server with no local rules uses empty parent ruleset');
 
 sub http_request {
