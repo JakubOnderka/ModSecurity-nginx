@@ -11,6 +11,10 @@
   automake, libtool, pkg-config, PCRE2, YAJL, libxml2, and OpenSSL development
   headers. The test harness also needs Perl, `prove`, OpenSSL, and CryptX for
   HTTP/3 tests. Install missing prerequisites only when needed.
+- If Nginx, libModSecurity, or the Nginx test harness is not already available,
+  follow the source-build example below in a separate writable build directory.
+  Do not treat missing preinstalled tools as a reason to skip the relevant tests.
+  If setup is blocked, report the specific blocker and which checks could not run.
 
 The following Linux example uses the versions in the workflow at the time these
 instructions were written. Run it from the connector checkout, replacing
