@@ -155,12 +155,12 @@ ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_http_mo
         clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
         if (clcf->keepalive_header)
         {
-            u_char buf[1024];
-            ngx_sprintf(buf, "timeout=%T%Z", clcf->keepalive_header);
+            u_char buf[sizeof("timeout=") - 1 + NGX_TIME_T_LEN];
             ngx_str_t name2 = ngx_string("Keep-Alive");
 
             value.data = buf;
-            value.len = strlen((char *)buf);
+            value.len = ngx_sprintf(buf, "timeout=%T",
+                clcf->keepalive_header) - buf;
 
             ngx_http_modsecurity_add_response_header(ctx, &name2, &value);
         }
