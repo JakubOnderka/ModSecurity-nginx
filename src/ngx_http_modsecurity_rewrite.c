@@ -49,11 +49,10 @@ ngx_http_modsecurity_set_hostname(ngx_http_modsecurity_ctx_t *ctx, ngx_http_requ
         cscf = ngx_http_get_module_srv_conf(r, ngx_http_core_module);
         if (cscf->server_name.len > 0) {
             hostname = cscf->server_name;
+        } else {
+            // hostname is empty
+            return NGX_OK;
         }
-    }
-
-    if (hostname.len == 0) {
-        return NGX_OK;
     }
 
     // Hostname is usually short and should be under 255 chars, so in that cases
@@ -117,7 +116,7 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
     int client_port = ngx_inet_get_port(r->connection->sockaddr);
     int server_port = ngx_inet_get_port(r->connection->local_sockaddr);
 
-    // Convert client address to null terminated string without allocation
+    // Convert client address to null terminated string
     u_char client_addr[NGX_SOCKADDR_STRLEN + 1];
     ngx_memcpy(client_addr, r->connection->addr_text.data, r->connection->addr_text.len);
     client_addr[r->connection->addr_text.len] = '\0';
