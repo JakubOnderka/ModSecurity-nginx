@@ -28,12 +28,11 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
     ngx_pool_t                   *old_pool;
     ngx_http_modsecurity_ctx_t   *ctx;
     ngx_http_modsecurity_conf_t  *mcf;
+    ngx_int_t                     ret;
 
     if (r != r->main) {
         return NGX_DECLINED;
     }
-
-    ctx = ngx_http_modsecurity_get_module_ctx(r);
 
     mcf = ngx_http_get_module_loc_conf(r, ngx_http_modsecurity_module);
     if (mcf == NULL || mcf->enable != 1) {
@@ -43,242 +42,218 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
 
     dd("catching a new _rewrite_ phase handler");
 
+    ctx = ngx_http_modsecurity_get_module_ctx(r);
     dd("recovering ctx: %p", ctx);
 
-    if (ctx == NULL)
-    {
-        int ret = 0;
+    if (ctx != NULL) {
+        return NGX_DECLINED;
+    }
 
-        ngx_connection_t *connection = r->connection;
+    ctx = ngx_http_modsecurity_create_ctx(r);
 
-        ctx = ngx_http_modsecurity_create_ctx(r);
+    dd("ctx was NULL, creating new context: %p", ctx);
 
-        dd("ctx was NULL, creating new context: %p", ctx);
+    if (ctx == NULL) {
+        dd("ctx still null; Nothing we can do, returning an error.");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
 
-        if (ctx == NULL) {
-            dd("ctx still null; Nothing we can do, returning an error.");
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
+    int client_port = ngx_inet_get_port(r->connection->sockaddr);
+    int server_port = ngx_inet_get_port(r->connection->local_sockaddr);
 
-        /**
-         * FIXME: Check if it is possible to hook on nginx on a earlier phase.
-         *
-         * At this point we are doing an late connection process. Maybe
-         * we have to hook into NGX_HTTP_FIND_CONFIG_PHASE, it seems to be the
-         * erliest phase that nginx allow us to attach those kind of hooks.
-         *
-         */
-        int client_port = ngx_inet_get_port(connection->sockaddr);
-        int server_port = ngx_inet_get_port(connection->local_sockaddr);
+    // Convert client address to null terminated string without allocation
+    u_char client_addr[NGX_SOCKADDR_STRLEN + 1];
+    ngx_memcpy(client_addr, r->connection->addr_text.data, r->connection->addr_text.len);
+    client_addr[r->connection->addr_text.len] = '\0';
 
-        // Convert client address to null terminated string without allocation
-        u_char client_addr[NGX_SOCKADDR_STRLEN + 1];
-        ngx_memcpy(client_addr, connection->addr_text.data, connection->addr_text.len);
-        client_addr[connection->addr_text.len] = '\0';
-
-        // Convert local address to server_addr with null termination
-        ngx_str_t s;
-        u_char server_addr[NGX_SOCKADDR_STRLEN + 1];
-        s.len = NGX_SOCKADDR_STRLEN;
-        s.data = server_addr;
-        if (ngx_connection_local_sockaddr(r->connection, &s, 0) != NGX_OK) {
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
-        server_addr[s.len] = '\0';
+    // Convert local address to server_addr with null termination
+    ngx_str_t s;
+    u_char server_addr[NGX_SOCKADDR_STRLEN + 1];
+    s.len = NGX_SOCKADDR_STRLEN;
+    s.data = server_addr;
+    if (ngx_connection_local_sockaddr(r->connection, &s, 0) != NGX_OK) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+    server_addr[s.len] = '\0';
 
 #if defined(MODSECURITY_CHECK_VERSION) && MODSECURITY_VERSION_NUM >= 30130100
-        ngx_str_t hostname;
-        hostname.len = 0;
-        // first check if Nginx received a Host header and it's usable
-        // (i.e. not empty)
-        // if yes, we can use that
-        if (r->headers_in.server.len > 0) {
-            hostname.len = r->headers_in.server.len;
-            hostname.data = r->headers_in.server.data;
+    ngx_str_t hostname;
+    hostname.len = 0;
+    // first check if Nginx received a Host header and it's usable
+    // (i.e. not empty)
+    // if yes, we can use that
+    if (r->headers_in.server.len > 0) {
+        hostname.len = r->headers_in.server.len;
+        hostname.data = r->headers_in.server.data;
+    } else {
+        // otherwise we try to use the server config, namely the
+        // server_name $SERVER_NAME
+        // directive
+        // for eg. in default config, server_name is "_"
+        // possible all requests without a Host header will be
+        // handled by this server block
+        ngx_http_core_srv_conf_t  *cscf;
+        cscf = ngx_http_get_module_srv_conf(r, ngx_http_core_module);
+        if (cscf->server_name.len > 0) {
+            hostname.len = cscf->server_name.len;
+            hostname.data = cscf->server_name.data;
         }
-        else {
-            // otherwise we try to use the server config, namely the
-            // server_name $SERVER_NAME
-            // directive
-            // for eg. in default config, server_name is "_"
-            // possible all requests without a Host header will be
-            // handled by this server block
-            ngx_http_core_srv_conf_t  *cscf;
-            cscf = ngx_http_get_module_srv_conf(r, ngx_http_core_module);
-            if (cscf->server_name.len > 0) {
-                hostname.len = cscf->server_name.len;
-                hostname.data = cscf->server_name.data;
-            }
-        }
-        if (hostname.len > 0) {
-            const char *host_name = ngx_str_to_char(hostname, r->pool);
-            if (host_name == (char*)-1) {
-                return NGX_HTTP_INTERNAL_SERVER_ERROR;
-            }
-            else {
-                // set the hostname in the transaction
-                // this function is only available in ModSecurity 3.0.13 and later
-                msc_set_request_hostname(ctx->modsec_transaction, (const unsigned char *)host_name);
-            }
-        }
-#endif
-
-        old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
-        msc_process_connection(ctx->modsec_transaction,
-            (const char *) client_addr, client_port,
-            (const char *) server_addr, server_port);
-        ngx_http_modsecurity_pcre_malloc_done(old_pool);
-        /**
-         *
-         * FIXME: Check how we can finalize a request without crash nginx.
-         *
-         * I don't think nginx is expecting to finalize a request at that
-         * point as it seems that it clean the ngx_http_request_t information
-         * and try to use it later.
-         *
-         */
-        dd("Processing intervention with the connection information filled in");
-        ret = ngx_http_modsecurity_process_intervention(ctx, r);
-        if (ret > 0) {
-            ctx->intervention_triggered = 1;
-            return ret;
-        }
-
-        const char *http_version;
-        switch (r->http_version) {
-            case NGX_HTTP_VERSION_9 :
-                http_version = "0.9";
-                break;
-            case NGX_HTTP_VERSION_10 :
-                http_version = "1.0";
-                break;
-            case NGX_HTTP_VERSION_11 :
-                http_version = "1.1";
-                break;
-#ifdef NGX_HTTP_VERSION_20
-            case NGX_HTTP_VERSION_20 :
-                http_version = "2.0";
-                break;
-#endif
-#ifdef NGX_HTTP_VERSION_30
-            case NGX_HTTP_VERSION_30 :
-                http_version = "3.0";
-                break;
-#endif
-            default :
-                http_version = ngx_str_to_char(r->http_protocol, r->pool);
-                if (http_version == (char*)-1) {
-                    return NGX_HTTP_INTERNAL_SERVER_ERROR;
-                }
-                if ((http_version != NULL) && (strlen(http_version) > 5) && (!strncmp("HTTP/", http_version, 5))) {
-                    http_version += 5;
-                } else {
-                    http_version = "1.0";
-                }
-                break;
-        }
-
-        // Do not allocate new string for common methods
-        const char *n_method;
-        switch (r->method) {
-            case NGX_HTTP_GET:
-                n_method = "GET";
-                break;
-            case NGX_HTTP_HEAD:
-                n_method = "HEAD";
-                break;
-            case NGX_HTTP_POST:
-                n_method = "POST";
-                break;
-            case NGX_HTTP_PUT:
-                n_method = "PUT";
-                break;
-            case NGX_HTTP_OPTIONS:
-                n_method = "OPTIONS";
-                break;
-            case NGX_HTTP_CONNECT:
-                n_method = "CONNECT";
-                break;
-            default:
-                n_method = ngx_str_to_char(r->method_name, r->pool);
-                if (n_method == (char*)-1) {
-                    return NGX_HTTP_INTERNAL_SERVER_ERROR;
-                }
-                break;
-        }
-
-        if (r->unparsed_uri.len == 0) {
-            ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "modsecurity: unparsed uri is empty");
-            return NGX_HTTP_BAD_REQUEST;
-        }
-        const char *n_uri = ngx_str_to_char(r->unparsed_uri, r->pool);
-        if (n_uri == (char*)-1) {
+    }
+    if (hostname.len > 0) {
+        const char *host_name = ngx_str_to_char(hostname, r->pool);
+        if (host_name == (char*)-1) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
-
-        old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
-        msc_process_uri(ctx->modsec_transaction, n_uri, n_method, http_version);
-        ngx_http_modsecurity_pcre_malloc_done(old_pool);
-
-        dd("Processing intervention with the transaction information filled in (uri, method and version)");
-        ret = ngx_http_modsecurity_process_intervention(ctx, r);
-        if (ret > 0) {
-            ctx->intervention_triggered = 1;
-            return ret;
+        else {
+            // set the hostname in the transaction
+            // this function is only available in ModSecurity 3.0.13 and later
+            msc_set_request_hostname(ctx->modsec_transaction, (const unsigned char *)host_name);
         }
+    }
+#endif
 
-        /**
-         * Since incoming request headers are already in place, lets send it to ModSecurity
-         *
-         */
-        ngx_list_part_t *part = &r->headers_in.headers.part;
-        ngx_table_elt_t *data = part->elts;
-        ngx_uint_t i = 0;
-        for (i = 0 ; /* void */ ; i++) {
-            if (i >= part->nelts) {
-                if (part->next == NULL) {
-                    break;
-                }
+    old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
+    msc_process_connection(ctx->modsec_transaction,
+        (const char *) client_addr, client_port,
+        (const char *) server_addr, server_port);
+    ngx_http_modsecurity_pcre_malloc_done(old_pool);
+    /**
+     *
+     * FIXME: Check how we can finalize a request without crash nginx.
+     *
+     * I don't think nginx is expecting to finalize a request at that
+     * point as it seems that it clean the ngx_http_request_t information
+     * and try to use it later.
+     *
+     */
+    dd("Processing intervention with the connection information filled in");
+    ret = ngx_http_modsecurity_process_intervention(ctx, r);
+    if (ret > 0) {
+        ctx->intervention_triggered = 1;
+        return ret;
+    }
 
-                part = part->next;
-                data = part->elts;
-                i = 0;
+    const char *http_version;
+    switch (r->http_version) {
+        case NGX_HTTP_VERSION_9:
+            http_version = "0.9";
+            break;
+        case NGX_HTTP_VERSION_10:
+            http_version = "1.0";
+            break;
+        case NGX_HTTP_VERSION_11:
+            http_version = "1.1";
+            break;
+#ifdef NGX_HTTP_VERSION_20
+        case NGX_HTTP_VERSION_20:
+            http_version = "2.0";
+            break;
+#endif
+#ifdef NGX_HTTP_VERSION_30
+        case NGX_HTTP_VERSION_30:
+            http_version = "3.0";
+            break;
+#endif
+        default:
+            http_version = ngx_str_to_char(r->http_protocol, r->pool);
+            if (http_version == (char*)-1) {
+                return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            }
+            if ((http_version != NULL) && (strlen(http_version) > 5) && (!strncmp("HTTP/", http_version, 5))) {
+                http_version += 5;
+            } else {
+                http_version = "1.0";
+            }
+            break;
+    }
+
+    // Do not allocate new string for common methods
+    const char *n_method;
+    switch (r->method) {
+        case NGX_HTTP_GET:
+            n_method = "GET";
+            break;
+        case NGX_HTTP_HEAD:
+            n_method = "HEAD";
+            break;
+        case NGX_HTTP_POST:
+            n_method = "POST";
+            break;
+        case NGX_HTTP_PUT:
+            n_method = "PUT";
+            break;
+        case NGX_HTTP_OPTIONS:
+            n_method = "OPTIONS";
+            break;
+        case NGX_HTTP_CONNECT:
+            n_method = "CONNECT";
+            break;
+        default:
+            n_method = ngx_str_to_char(r->method_name, r->pool);
+            if (n_method == (char*)-1) {
+                return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            }
+            break;
+    }
+
+    if (r->unparsed_uri.len == 0) {
+        ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "modsecurity: unparsed uri is empty");
+        return NGX_HTTP_BAD_REQUEST;
+    }
+    const char *n_uri = ngx_str_to_char(r->unparsed_uri, r->pool);
+    if (n_uri == (char*)-1) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
+    msc_process_uri(ctx->modsec_transaction, n_uri, n_method, http_version);
+    ngx_http_modsecurity_pcre_malloc_done(old_pool);
+
+    dd("Processing intervention with the transaction information filled in (uri, method and version)");
+    ret = ngx_http_modsecurity_process_intervention(ctx, r);
+    if (ret > 0) {
+        ctx->intervention_triggered = 1;
+        return ret;
+    }
+
+    /**
+     * Since incoming request headers are already in place, lets send it to ModSecurity
+     */
+    ngx_list_part_t *part = &r->headers_in.headers.part;
+    ngx_table_elt_t *data = part->elts;
+    ngx_uint_t i = 0;
+    for (i = 0 ; /* void */ ; i++) {
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
             }
 
-            /**
-             * By using u_char (utf8_t) I believe nginx is hoping to deal
-             * with utf8 strings.
-             * Casting those into to unsigned char * in order to pass
-             * it to ModSecurity, it will handle with those later.
-             *
-             */
-
-            dd("Adding request header: %.*s with value %.*s", (int)data[i].key.len, data[i].key.data, (int) data[i].value.len, data[i].value.data);
-            msc_add_n_request_header(ctx->modsec_transaction,
-                (const unsigned char *) data[i].key.data,
-                data[i].key.len,
-                (const unsigned char *) data[i].value.data,
-                data[i].value.len);
+            part = part->next;
+            data = part->elts;
+            i = 0;
         }
 
-        /**
-         * Since ModSecurity already knew about all headers, i guess it is safe
-         * to process this information.
-         */
+        dd("Adding request header: %.*s with value %.*s", (int)data[i].key.len, data[i].key.data, (int) data[i].value.len, data[i].value.data);
+        msc_add_n_request_header(ctx->modsec_transaction,
+            (const unsigned char *) data[i].key.data,
+            data[i].key.len,
+            (const unsigned char *) data[i].value.data,
+            data[i].value.len);
+    }
 
-        old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
-        msc_process_request_headers(ctx->modsec_transaction);
-        ngx_http_modsecurity_pcre_malloc_done(old_pool);
 
-        dd("Processing intervention with the request headers information filled in");
-        ret = ngx_http_modsecurity_process_intervention(ctx, r);
-        if (r->error_page) {
-            return NGX_DECLINED;
-        }
-        if (ret > 0) {
-            ctx->intervention_triggered = 1;
-            return ret;
-        }
+    old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
+    msc_process_request_headers(ctx->modsec_transaction);
+    ngx_http_modsecurity_pcre_malloc_done(old_pool);
+
+    dd("Processing intervention with the request headers information filled in");
+    ret = ngx_http_modsecurity_process_intervention(ctx, r);
+    if (r->error_page) {
+        return NGX_DECLINED;
+    }
+    if (ret > 0) {
+        ctx->intervention_triggered = 1;
+        return ret;
     }
 
     return NGX_DECLINED;
