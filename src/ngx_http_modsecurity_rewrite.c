@@ -22,6 +22,61 @@
 
 #include "ngx_http_modsecurity_common.h"
 
+
+static ngx_int_t
+ngx_http_modsecurity_set_hostname(ngx_http_modsecurity_ctx_t *ctx, ngx_http_request_t *r)
+{
+#if defined(MODSECURITY_CHECK_VERSION) && MODSECURITY_VERSION_NUM >= 30130100
+    u_char hostname_buf[256];
+
+    ngx_str_t hostname;
+    hostname.len = 0;
+
+    // first check if Nginx received a Host header and it's usable
+    // (i.e. not empty)
+    // if yes, we can use that
+    if (r->headers_in.server.len > 0) {
+        hostname = r->headers_in.server;
+    } else {
+        // otherwise we try to use the server config, namely the
+        // server_name $SERVER_NAME
+        // directive
+        // for eg. in default config, server_name is "_"
+        // possible all requests without a Host header will be
+        // handled by this server block
+        ngx_http_core_srv_conf_t  *cscf;
+        cscf = ngx_http_get_module_srv_conf(r, ngx_http_core_module);
+        if (cscf->server_name.len > 0) {
+            hostname = cscf->server_name;
+        }
+    }
+
+    if (hostname.len == 0) {
+        return NGX_OK;
+    }
+
+    // Hostname is usually short and should be under 255 chars, so in that cases
+    // we don't need to allocate
+    char *host_name;
+    if (hostname.len < sizeof(hostname_buf)) {
+        ngx_memcpy(hostname_buf, hostname.data, hostname.len);
+        hostname_buf[hostname.len] = '\0';
+        host_name = (char *) hostname_buf;
+    } else {
+        host_name = ngx_str_to_char(hostname, r->pool);
+        if (host_name == (char*)-1) {
+            return NGX_ERROR;
+        }
+    }
+
+    // set the hostname in the transaction
+    // this function is only available in ModSecurity 3.0.13 and later
+    msc_set_request_hostname(ctx->modsec_transaction, (const unsigned char *)host_name);
+#endif
+    return NGX_OK;
+}
+
+
 ngx_int_t
 ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
 {
@@ -76,41 +131,9 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
     }
     server_addr[s.len] = '\0';
 
-#if defined(MODSECURITY_CHECK_VERSION) && MODSECURITY_VERSION_NUM >= 30130100
-    ngx_str_t hostname;
-    hostname.len = 0;
-    // first check if Nginx received a Host header and it's usable
-    // (i.e. not empty)
-    // if yes, we can use that
-    if (r->headers_in.server.len > 0) {
-        hostname.len = r->headers_in.server.len;
-        hostname.data = r->headers_in.server.data;
-    } else {
-        // otherwise we try to use the server config, namely the
-        // server_name $SERVER_NAME
-        // directive
-        // for eg. in default config, server_name is "_"
-        // possible all requests without a Host header will be
-        // handled by this server block
-        ngx_http_core_srv_conf_t  *cscf;
-        cscf = ngx_http_get_module_srv_conf(r, ngx_http_core_module);
-        if (cscf->server_name.len > 0) {
-            hostname.len = cscf->server_name.len;
-            hostname.data = cscf->server_name.data;
-        }
+    if (ngx_http_modsecurity_set_hostname(ctx, r) != NGX_OK) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
-    if (hostname.len > 0) {
-        const char *host_name = ngx_str_to_char(hostname, r->pool);
-        if (host_name == (char*)-1) {
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
-        else {
-            // set the hostname in the transaction
-            // this function is only available in ModSecurity 3.0.13 and later
-            msc_set_request_hostname(ctx->modsec_transaction, (const unsigned char *)host_name);
-        }
-    }
-#endif
 
     old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
     msc_process_connection(ctx->modsec_transaction,
