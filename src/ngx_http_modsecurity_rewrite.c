@@ -31,6 +31,7 @@ ngx_http_modsecurity_set_hostname(ngx_http_modsecurity_ctx_t *ctx, ngx_http_requ
 
     ngx_str_t hostname;
     hostname.len = 0;
+    hostname.data = NULL;
 
     // first check if Nginx received a Host header and it's usable
     // (i.e. not empty)
@@ -57,21 +58,21 @@ ngx_http_modsecurity_set_hostname(ngx_http_modsecurity_ctx_t *ctx, ngx_http_requ
 
     // Hostname is usually short and should be under 255 chars, so in that cases
     // we don't need to allocate
-    char *host_name;
+    char *hostname_char;
     if (hostname.len < sizeof(hostname_buf)) {
         ngx_memcpy(hostname_buf, hostname.data, hostname.len);
         hostname_buf[hostname.len] = '\0';
-        host_name = (char *) hostname_buf;
+        hostname_char = (char *) hostname_buf;
     } else {
-        host_name = ngx_str_to_char(hostname, r->pool);
-        if (host_name == (char*)-1) {
+        hostname_char = ngx_str_to_char(hostname, r->pool);
+        if (hostname_char == (char*)-1) {
             return NGX_ERROR;
         }
     }
 
     // set the hostname in the transaction
     // this function is only available in ModSecurity 3.0.13 and later
-    msc_set_request_hostname(ctx->modsec_transaction, (const unsigned char *)host_name);
+    msc_set_request_hostname(ctx->modsec_transaction, (const unsigned char *)hostname_char);
 #endif
     return NGX_OK;
 }
