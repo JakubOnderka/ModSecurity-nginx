@@ -64,7 +64,7 @@ ngx_http_modsecurity_set_hostname(ngx_http_modsecurity_ctx_t *ctx, ngx_http_requ
         hostname_char = (char *) hostname_buf;
     } else {
         hostname_char = ngx_str_to_char(hostname, r->pool);
-        if (hostname_char == (char*)-1) {
+        if (hostname_char == NULL) {
             return NGX_ERROR;
         }
     }
@@ -176,10 +176,10 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
 #endif
         default:
             http_version = ngx_str_to_char(r->http_protocol, r->pool);
-            if (http_version == (char*)-1) {
+            if (http_version == NULL) {
                 return NGX_HTTP_INTERNAL_SERVER_ERROR;
             }
-            if ((http_version != NULL) && (strlen(http_version) > 5) && (!strncmp("HTTP/", http_version, 5))) {
+            if ((strlen(http_version) > 5) && (!strncmp("HTTP/", http_version, 5))) {
                 http_version += 5;
             } else {
                 http_version = "1.0";
@@ -210,7 +210,7 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
             break;
         default:
             n_method = ngx_str_to_char(r->method_name, r->pool);
-            if (n_method == (char*)-1) {
+            if (n_method == NULL) {
                 return NGX_HTTP_INTERNAL_SERVER_ERROR;
             }
             break;
@@ -221,7 +221,7 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
         return NGX_HTTP_BAD_REQUEST;
     }
     const char *n_uri = ngx_str_to_char(r->unparsed_uri, r->pool);
-    if (n_uri == (char*)-1) {
+    if (n_uri == NULL) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
