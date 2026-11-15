@@ -80,7 +80,6 @@ ngx_http_modsecurity_set_hostname(ngx_http_modsecurity_ctx_t *ctx, ngx_http_requ
 ngx_int_t
 ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
 {
-    ngx_pool_t                   *old_pool;
     ngx_http_modsecurity_ctx_t   *ctx;
     ngx_http_modsecurity_conf_t  *mcf;
     ngx_int_t                     ret;
@@ -135,11 +134,9 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
     msc_process_connection(ctx->modsec_transaction,
         (const char *) client_addr, client_port,
         (const char *) server_addr, server_port);
-    ngx_http_modsecurity_pcre_malloc_done(old_pool);
     /**
      *
      * FIXME: Check how we can finalize a request without crash nginx.
@@ -228,9 +225,7 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
     msc_process_uri(ctx->modsec_transaction, n_uri, n_method, http_version);
-    ngx_http_modsecurity_pcre_malloc_done(old_pool);
 
     dd("Processing intervention with the transaction information filled in (uri, method and version)");
     ret = ngx_http_modsecurity_process_intervention(ctx, r);
@@ -265,9 +260,7 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
     }
 
 
-    old_pool = ngx_http_modsecurity_pcre_malloc_init(r->pool);
     msc_process_request_headers(ctx->modsec_transaction);
-    ngx_http_modsecurity_pcre_malloc_done(old_pool);
 
     dd("Processing intervention with the request headers information filled in");
     ret = ngx_http_modsecurity_process_intervention(ctx, r);

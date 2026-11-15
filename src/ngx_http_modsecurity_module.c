@@ -38,77 +38,8 @@ static ngx_int_t ngx_http_modsecurity_status_variable(ngx_http_request_t *r, ngx
 
 static ngx_str_t  ngx_http_modsecurity_status = ngx_string("modsecurity_status");
 
-/*
- * PCRE malloc/free workaround, based on
- * https://github.com/openresty/lua-nginx-module/blob/master/src/ngx_http_lua_pcrefix.c
- */
-
-#if !(NGX_PCRE2)
-static void *(*old_pcre_malloc)(size_t);
-static void (*old_pcre_free)(void *ptr);
-static ngx_pool_t *ngx_http_modsec_pcre_pool = NULL;
-
-static void *
-ngx_http_modsec_pcre_malloc(size_t size)
-{
-    if (ngx_http_modsec_pcre_pool) {
-        return ngx_palloc(ngx_http_modsec_pcre_pool, size);
-    }
-
-    fprintf(stderr, "error: modsec pcre malloc failed due to empty pcre pool");
-
-    return NULL;
-}
-
-static void
-ngx_http_modsec_pcre_free(void *ptr)
-{
-    if (ngx_http_modsec_pcre_pool) {
-        ngx_pfree(ngx_http_modsec_pcre_pool, ptr);
-        return;
-    }
-
-#if 0
-    /* this may happen when called from cleanup handlers */
-    fprintf(stderr, "error: modsec pcre free failed due to empty pcre pool");
-#endif
-
-    return;
-}
-
-ngx_pool_t *
-ngx_http_modsecurity_pcre_malloc_init(ngx_pool_t *pool)
-{
-    ngx_pool_t  *old_pool;
-
-    if (pcre_malloc != ngx_http_modsec_pcre_malloc) {
-        ngx_http_modsec_pcre_pool = pool;
-
-        old_pcre_malloc = pcre_malloc;
-        old_pcre_free = pcre_free;
-
-        pcre_malloc = ngx_http_modsec_pcre_malloc;
-        pcre_free = ngx_http_modsec_pcre_free;
-
-        return NULL;
-    }
-
-    old_pool = ngx_http_modsec_pcre_pool;
-    ngx_http_modsec_pcre_pool = pool;
-
-    return old_pool;
-}
-
-void
-ngx_http_modsecurity_pcre_malloc_done(ngx_pool_t *old_pool)
-{
-    ngx_http_modsec_pcre_pool = old_pool;
-
-    if (old_pool == NULL) {
-        pcre_malloc = old_pcre_malloc;
-        pcre_free = old_pcre_free;
-    }
-}
+#if (NGX_PCRE && !NGX_PCRE2)
+#error "PCRE1 is not supported by this module"
 #endif
 
 /*
@@ -152,11 +83,10 @@ ngx_http_modsecurity_handle_error(ngx_conf_t *cf, const char *error)
 
 
 int
-ngx_http_modsecurity_process_intervention (ngx_http_modsecurity_ctx_t *ctx, ngx_http_request_t *r)
+ngx_http_modsecurity_process_intervention(ngx_http_modsecurity_ctx_t *ctx, ngx_http_request_t *r)
 {
     char *log = NULL;
     ModSecurityIntervention intervention;
-    Transaction *transaction;
     intervention.status = 200;
     intervention.url = NULL;
     intervention.log = NULL;
@@ -165,11 +95,9 @@ ngx_http_modsecurity_process_intervention (ngx_http_modsecurity_ctx_t *ctx, ngx_
 
     dd("processing intervention");
 
-    transaction = ctx->modsec_transaction;
-
-    if (msc_intervention(transaction, &intervention) == 0) {
+    if (msc_intervention(ctx->modsec_transaction, &intervention) == 0) {
         dd("nothing to do");
-        return 0;
+        return NGX_OK;
     }
 
     mcf = ngx_http_get_module_loc_conf(r, ngx_http_modsecurity_module);
@@ -197,13 +125,11 @@ ngx_http_modsecurity_process_intervention (ngx_http_modsecurity_ctx_t *ctx, ngx_
         free(intervention.log);
     }
 
-    if (intervention.url != NULL)
-    {
+    if (intervention.url != NULL) {
         ctx->status = intervention.status;
         dd("intervention -- redirecting to: %s with status code: %d", intervention.url, intervention.status);
 
-        if (r->header_sent)
-        {
+        if (r->header_sent) {
             dd("Headers are already sent. Cannot perform the redirection at this point.");
             free(intervention.url);
             return -1;
@@ -235,8 +161,7 @@ ngx_http_modsecurity_process_intervention (ngx_http_modsecurity_ctx_t *ctx, ngx_
         return intervention.status;
     }
 
-    if (intervention.status != 200)
-    {
+    if (intervention.status != 200) {
         ctx->status = intervention.status;
         /**
          * FIXME: this will bring proper response code to audit log in case
@@ -246,15 +171,14 @@ ngx_http_modsecurity_process_intervention (ngx_http_modsecurity_ctx_t *ctx, ngx_
          */
         msc_update_status_code(ctx->modsec_transaction, intervention.status);
 
-        if (r->header_sent)
-        {
+        if (r->header_sent) {
             dd("Headers are already sent. Cannot perform the redirection at this point.");
             return -1;
         }
         dd("intervention -- returning code: %d", intervention.status);
         return intervention.status;
     }
-    return 0;
+    return NGX_OK;
 }
 
 
@@ -404,7 +328,6 @@ ngx_conf_set_rules(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     char                              *rules;
     ngx_str_t                         *value;
     const char                        *error;
-    ngx_pool_t                        *old_pool;
     ngx_http_modsecurity_conf_t       *mcf = conf;
     ngx_http_modsecurity_main_conf_t  *mmcf;
 
@@ -419,9 +342,7 @@ ngx_conf_set_rules(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    old_pool = ngx_http_modsecurity_pcre_malloc_init(cf->pool);
     res = msc_rules_add(mcf->rules_set, rules, &error);
-    ngx_http_modsecurity_pcre_malloc_done(old_pool);
 
     if (res < 0) {
         ngx_http_modsecurity_handle_error(cf, error);
@@ -442,7 +363,6 @@ ngx_conf_set_rules_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     char                              *rules_set;
     ngx_str_t                         *value;
     const char                        *error;
-    ngx_pool_t                        *old_pool;
     ngx_http_modsecurity_conf_t       *mcf = conf;
     ngx_http_modsecurity_main_conf_t  *mmcf;
 
@@ -457,9 +377,7 @@ ngx_conf_set_rules_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    old_pool = ngx_http_modsecurity_pcre_malloc_init(cf->pool);
     res = msc_rules_add_file(mcf->rules_set, rules_set, &error);
-    ngx_http_modsecurity_pcre_malloc_done(old_pool);
 
     if (res < 0) {
         ngx_http_modsecurity_handle_error(cf, error);
@@ -480,7 +398,6 @@ ngx_conf_set_rules_remote(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_str_t                         *value;
     const char                        *error;
     const char                        *rules_remote_key, *rules_remote_server;
-    ngx_pool_t                        *old_pool;
     ngx_http_modsecurity_conf_t       *mcf = conf;
     ngx_http_modsecurity_main_conf_t  *mmcf;
 
@@ -500,9 +417,7 @@ ngx_conf_set_rules_remote(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    old_pool = ngx_http_modsecurity_pcre_malloc_init(cf->pool);
     res = msc_rules_add_remote(mcf->rules_set, rules_remote_key, rules_remote_server, &error);
-    ngx_http_modsecurity_pcre_malloc_done(old_pool);
 
     if (res < 0) {
         ngx_http_modsecurity_handle_error(cf, error);
@@ -871,32 +786,26 @@ ngx_http_modsecurity_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 static void
 ngx_http_modsecurity_cleanup_instance(void *data)
 {
-    ngx_pool_t                        *old_pool;
     ngx_http_modsecurity_main_conf_t  *mmcf;
 
     mmcf = (ngx_http_modsecurity_main_conf_t *) data;
 
     dd("deleting a main conf -- instance is: \"%p\"", mmcf->modsec);
 
-    old_pool = ngx_http_modsecurity_pcre_malloc_init(mmcf->pool);
     msc_cleanup(mmcf->modsec);
-    ngx_http_modsecurity_pcre_malloc_done(old_pool);
 }
 
 
 static void
 ngx_http_modsecurity_cleanup_rules(void *data)
 {
-    ngx_pool_t                   *old_pool;
     ngx_http_modsecurity_conf_t  *mcf;
 
     mcf = (ngx_http_modsecurity_conf_t *) data;
 
     dd("deleting a loc conf -- RuleSet is: \"%p\"", mcf->rules_set);
 
-    old_pool = ngx_http_modsecurity_pcre_malloc_init(mcf->pool);
     msc_rules_cleanup(mcf->rules_set);
-    ngx_http_modsecurity_pcre_malloc_done(old_pool);
 }
 
 

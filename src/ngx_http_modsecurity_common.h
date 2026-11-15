@@ -111,13 +111,6 @@ int ngx_http_modsecurity_process_intervention (ngx_http_modsecurity_ctx_t *ctx, 
 ngx_http_modsecurity_ctx_t *ngx_http_modsecurity_create_ctx(ngx_http_request_t *r);
 ngx_http_modsecurity_ctx_t *ngx_http_modsecurity_get_module_ctx(ngx_http_request_t *r);
 char *ngx_str_to_char(ngx_str_t a, ngx_pool_t *p);
-#if (NGX_PCRE2)
-#define ngx_http_modsecurity_pcre_malloc_init(x) NULL
-#define ngx_http_modsecurity_pcre_malloc_done(x) (void)x
-#else
-ngx_pool_t *ngx_http_modsecurity_pcre_malloc_init(ngx_pool_t *pool);
-void ngx_http_modsecurity_pcre_malloc_done(ngx_pool_t *old_pool);
-#endif
 void ngx_http_modsecurity_cleanup(void *data);
 
 /* ngx_http_modsecurity_body_filter.c */
