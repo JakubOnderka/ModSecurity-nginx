@@ -51,14 +51,13 @@ ngx_inline char *ngx_str_to_char(ngx_str_t a, ngx_pool_t *p)
     char *str = NULL;
 
     if (a.len == 0) {
-        return NULL;
+        return "";
     }
 
     str = ngx_pnalloc(p, a.len+1);
     if (str == NULL) {
         dd("failed to allocate memory to convert space ngx_string to C string");
-        /* We already returned NULL for an empty string, so return -1 here to indicate allocation error */
-        return (char *)-1;
+        return NULL;
     }
     ngx_memcpy(str, a.data, a.len);
     str[a.len] = '\0';
@@ -333,8 +332,7 @@ ngx_conf_set_rules(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     value = cf->args->elts;
     rules = ngx_str_to_char(value[1], cf->pool);
-
-    if (rules == (char *)-1) {
+    if (rules == NULL) {
         return NGX_CONF_ERROR;
     }
 
@@ -368,8 +366,7 @@ ngx_conf_set_rules_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     value = cf->args->elts;
     rules_set = ngx_str_to_char(value[1], cf->pool);
-
-    if (rules_set == (char *)-1) {
+    if (rules_set == NULL) {
         return NGX_CONF_ERROR;
     }
 
@@ -405,11 +402,7 @@ ngx_conf_set_rules_remote(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     rules_remote_key = ngx_str_to_char(value[1], cf->pool);
     rules_remote_server = ngx_str_to_char(value[2], cf->pool);
 
-    if (rules_remote_server == (char *)-1) {
-        return NGX_CONF_ERROR;
-    }
-
-    if (rules_remote_key == (char *)-1) {
+    if (rules_remote_key == NULL || rules_remote_key == NULL) {
         return NGX_CONF_ERROR;
     }
 
