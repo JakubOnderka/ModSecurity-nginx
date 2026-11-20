@@ -66,3 +66,47 @@ for the full suite. If running tests as root in an isolated test environment,
 `TEST_NGINX_GLOBALS='user root;'` avoids permission failures when the test
 directory is inaccessible to Nginx's default unprivileged worker. Never use
 that setting for a production server.
+
+## Benchmarking request-body inspection
+
+The Go benchmark has no third-party dependencies. It requires Linux, Go,
+`getconf`, `taskset`, and two executable Nginx binaries built with this
+connector and libModSecurity. Build baseline and candidate in separate clean
+directories, using the same Nginx and libModSecurity versions, compiler, flags,
+and configuration; vary only the connector revision. Use release builds
+without `--with-debug` and verify both binaries with `nginx -V` and `ldd`.
+
+From the connector checkout, run:
+
+ ```sh
+ taskset -pc $$
+ GO111MODULE=off taskset -c 1 go run bench/request_body_bench.go \
+   --baseline "$WORK/nginx-baseline/objs/nginx" \
+   --candidate "$WORK/nginx-candidate/objs/nginx" \
+   --server-cpu 0 --upstream-cpu 2 \
+   --duration 10s --warmup 1s --rounds 5 --concurrency 4 \
+   | tee "$WORK/request-body-benchmark.jsonl"
+ ```
+
+Choose three distinct CPUs allowed by the current affinity mask: the command
+pins the Go load generator to CPU 1, Nginx to CPU 0, and the local body-draining
+upstream to CPU 2. Change these values if those CPUs are unavailable. The
+benchmark alternates baseline/candidate order by round and switches the order
+of the module-off and inspection cases. Each measured case is warmed up first.
+
+By default, the runner sends deterministic 8 KiB, 64 KiB, and 1 MiB POST bodies
+with a matching marker at the end. With the default 16 KiB
+`client_body_buffer_size`, the smallest body exercises in-memory inspection
+and the larger bodies exercise the client-body temp-file path. It checks that
+the module-off control and the passing inspection rule return HTTP 204, and
+that a separate blocking rule returns HTTP 403, before measuring. The upstream
+drains each body and returns HTTP 204. Access logging is disabled and upstream
+keep-alive is enabled in the generated Nginx configuration.
+
+The JSONL output includes binary versions and hashes, fixture hashes,
+per-round requests/sec, body throughput, p50/p95/p99 latency, and Nginx CPU
+time per request, followed by median summaries. Keep the raw output; report
+body sizes, buffer size, concurrency, CPU affinity, versions, and host
+contention with any comparison. The benchmark removes its temporary Nginx
+configurations and stops its processes on exit. Run its unit tests with
+`GO111MODULE=off go test ./bench`.
