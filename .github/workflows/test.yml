@@ -59,7 +59,7 @@ jobs:
       - name: Build nginx with ModSecurity-nginx module
         working-directory: nginx
         run: |
-          ./configure --with-ld-opt="-Wl,-rpath,/usr/local/lib" --with-http_v2_module --with-http_v3_module --with-http_ssl_module --with-http_auth_request_module --add-module=../ModSecurity-nginx
+          ./configure --with-ld-opt="-Wl,-rpath,/usr/local/lib" --with-http_v2_module --with-http_v3_module --with-http_ssl_module --with-http_auth_request_module --add-module=../ModSecurity-nginx --add-module=../ModSecurity-nginx/tests
           make -j $(nproc)
           make modules
           sudo make install

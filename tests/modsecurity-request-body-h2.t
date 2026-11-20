@@ -122,7 +122,7 @@ EOF
 
 $t->run();
 
-$t->plan(41);
+$t->plan(42);
 
 ###############################################################################
 
@@ -222,6 +222,14 @@ $s->h2_body('BODY' x 32 . 'X');
 $frames = $s->read(all => [{ sid => $sid, fin => 1 }]);
 ($frame) = grep { $_->{type} eq "HEADERS" } @$frames;
 is($frame->{headers}->{':status'}, 403, 'POST request body limit reject, block (one byte over limit)');
+
+$s = Test::Nginx::HTTP2->new();
+$sid = $s->new_stream({ method => 'POST', path => '/bodylimitreject', body_more => 1 });
+$s->h2_body('BODY' x 33, { body_more => 1 });
+$frames = $s->read(all => [{ sid => $sid, fin => 1 }]);
+($frame) = grep { $_->{type} eq "HEADERS" } @$frames;
+is($frame ? $frame->{headers}->{':status'} : undef, 403,
+    'body limit rejects before END_STREAM');
 
 $s = Test::Nginx::HTTP2->new();
 $sid = $s->new_stream({ method => 'POST', path => '/bodyaccesssmallbuffer', 'body_more' => 1 });

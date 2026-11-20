@@ -21,7 +21,7 @@ select STDERR; $| = 1;
 select STDOUT; $| = 1;
 
 my $t = Test::Nginx->new()->has(qw/http http_v3 proxy cryptx/)
-	->has_daemon('openssl')->plan(51);
+	->has_daemon('openssl')->plan(52);
 
 $t->write_file_expand('nginx.conf', <<'EOF');
 
@@ -223,6 +223,14 @@ foreach my $case (
 	$s->h3_body($last, $sid);
 	is(response_headers($s, $sid)->{':status'}, $status, $name);
 }
+
+$s = Test::Nginx::HTTP3->new();
+$sid = $s->new_stream({
+	method => 'POST', path => '/bodylimitreject', body_more => 1
+});
+$s->h3_body('BODY' x 33, $sid, { body_more => 1 });
+is(response_headers($s, $sid)->{':status'}, 403,
+	'body limit rejects before upload stream finishes');
 
 my $body = 'GOOD' x 300;
 $headers = request({

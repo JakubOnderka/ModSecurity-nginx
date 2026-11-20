@@ -13,7 +13,7 @@ BEGIN { use FindBin; chdir($FindBin::Bin); }
 use lib 'lib';
 use Test::Nginx qw/ http http_get http_start http_end /;
 
-my $t = Test::Nginx->new()->has(qw/http proxy/)->plan(29);
+my $t = Test::Nginx->new()->has(qw/http proxy/)->plan(35);
 
 $t->write_file_expand('nginx.conf', <<'EOF');
 %%TEST_GLOBALS%%
@@ -49,6 +49,15 @@ http {
         location /file/ {
             client_body_buffer_size 128;
             client_body_in_file_only clean;
+            proxy_pass http://127.0.0.1:8081;
+        }
+        location /storage-error {
+            client_body_buffer_size 128;
+            client_body_temp_path %%TESTDIR%%/unwritable;
+            proxy_pass http://127.0.0.1:8081;
+        }
+        location /size-error {
+            client_max_body_size 100;
             proxy_pass http://127.0.0.1:8081;
         }
     }
@@ -95,6 +104,35 @@ like(http('POST /blocked HTTP/1.1' . CRLF
     . 'Host: localhost' . CRLF . 'Connection: close' . CRLF
     . 'Content-Length: 8' . CRLF . CRLF . 'BAD BODY'),
     qr/^HTTP.*403/, 'complete malicious body is still inspected');
+
+my $path = $t->testdir() . '/unwritable';
+rmdir $path or die "Can't remove body temp directory: $!";
+open my $blocker, '>', $path or die "Can't block body temp path: $!";
+close $blocker;
+my $s = http_start('POST /storage-error HTTP/1.1' . CRLF
+    . 'Host: localhost' . CRLF . 'Content-Length: 65536' . CRLF
+    . 'Connection: close' . CRLF . CRLF);
+select undef, undef, undef, 0.1;
+$s->print('x' x 1024) or die "Can't send partial body: $!";
+shutdown($s, SHUT_WR);
+like(http_end($s), qr/^HTTP.*500/, 'asynchronous body file failure returns 500');
+ok(wait_for(sub { $t->read_file('requests.log') =~ m{^/storage-error 500 }m }),
+    'body file failure finalizes the request');
+like(http_get('/recovered-storage'), qr/UPSTREAM/,
+    'worker accepts requests after body file failure');
+
+$s = http_start('POST /size-error HTTP/1.1' . CRLF
+    . 'Host: localhost' . CRLF . 'Transfer-Encoding: chunked' . CRLF
+    . 'Connection: close' . CRLF . CRLF);
+select undef, undef, undef, 0.1;
+$s->print('65' . CRLF . ('x' x 101) . CRLF . '0' . CRLF . CRLF)
+    or die "Can't send chunked body: $!";
+shutdown($s, SHUT_WR);
+like(http_end($s), qr/^HTTP.*413/, 'asynchronous chunked body limit returns 413');
+ok(wait_for(sub { $t->read_file('requests.log') =~ m{^/size-error 413 }m }),
+    'chunked body limit finalizes the request');
+like(http_get('/recovered-size'), qr/UPSTREAM/,
+    'worker accepts requests after chunked body limit');
 
 $t->stop();
 unlike($t->read_file('upstream.log'), qr{/(memory|file)/(length|chunked|timeout)\s},

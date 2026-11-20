@@ -14,7 +14,7 @@ use Test::Nginx;
 use Test::Nginx::HTTP3;
 
 my $t = Test::Nginx->new()->has(qw/http http_v3 proxy cryptx/)
-    ->has_daemon('openssl')->plan(21);
+    ->has_daemon('openssl')->plan(24);
 
 $t->write_file_expand('nginx.conf', <<'EOF');
 %%TEST_GLOBALS%%
@@ -51,6 +51,10 @@ http {
         location /file/ {
             client_body_buffer_size 128;
             client_body_in_file_only clean;
+            proxy_pass http://127.0.0.1:8081;
+        }
+        location /size-error {
+            client_max_body_size 100;
             proxy_pass http://127.0.0.1:8081;
         }
     }
@@ -121,6 +125,18 @@ foreach my $mode ('memory', 'file') {
     $sid = $s->new_stream({ path => '/recovered', body => 'GOOD' });
     is(status($s, $sid), 200, "$mode: worker accepts new connection");
 }
+
+my $s = Test::Nginx::HTTP3->new();
+my $sid = $s->new_stream({
+    method => 'POST', path => '/size-error', body_more => 1
+});
+select undef, undef, undef, 0.1;
+$s->h3_body('x' x 101, $sid, { body_more => 1 });
+is(status($s, $sid), 413, 'asynchronous body size limit returns 413');
+ok(wait_for(sub { $t->read_file('requests.log') =~ m{^/size-error 413 }m }),
+    'body size failure finalizes the stream');
+$sid = $s->new_stream({ path => '/after-size-error', body => 'GOOD' });
+is(status($s, $sid), 200, 'connection usable after body size failure');
 
 $t->stop();
 unlike($t->read_file('upstream.log'), qr{/(memory|file)/(reset|disconnect)\s},

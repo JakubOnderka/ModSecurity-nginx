@@ -61,7 +61,17 @@ http {
             ';
             proxy_pass http://127.0.0.1:%%PORT_8081%%;
         }
-        
+
+        location /bodyintervention {
+            modsecurity_rules '
+                SecRuleEngine On
+                SecRequestBodyAccess On
+                SecRule REQUEST_BODY "@contains BAD BODY" "id:14,phase:2,deny,status:403"
+                SecRule RESPONSE_STATUS "@streq 403" "id:15,phase:3,deny,status:500"
+            ';
+            proxy_pass http://127.0.0.1:%%PORT_8081%%;
+        }
+
         location /chunkedbody {
             modsecurity_rules '
                 SecRuleEngine On
@@ -143,7 +153,7 @@ EOF
 $t->run_daemon(\&http_daemon);
 $t->run()->waitforsocket('127.0.0.1:' . port(8081));
 
-$t->plan(45);
+$t->plan(48);
 
 ###############################################################################
 
@@ -160,6 +170,8 @@ like(http_req_body($method, '/bodylimitprocesspartial', 'BODY' x 30 . 'BAD BODY'
 
 like(http_get('/bodyaccess'), qr/TEST-OK-IF-YOU-SEE-THIS/, 'request without a body passes');
 like(http_req_body('POST', '/bodyaccess', ''), qr/TEST-OK-IF-YOU-SEE-THIS/, 'zero-length request body passes');
+like(http_req_body('POST', '/bodyintervention', 'BAD BODY'), qr/^HTTP.*403/,
+    'phase 2 intervention skips further response inspection');
 
 like(http_req_body('POST', '/useauth', 'BODY' x 16), qr/TEST-OK-IF-YOU-SEE-THIS/, "POST with auth_request (request size < client_header_buffer_size)");
 like(http_req_body('POST', '/useauth', 'BODY' x 257), qr/TEST-OK-IF-YOU-SEE-THIS/, "POST with auth_request (request size > client_header_buffer_size)");
@@ -207,6 +219,17 @@ like(
 foreach my $method (('GET', 'POST', 'PUT', 'DELETE')) {
 like(http_req_body($method, '/bodylimitrejectserver', 'BODY' x 33), qr/^HTTP.*403/, "$method request body limit reject, block (inherited SecRequestBodyLimit)");
 }
+
+my $unfinished = Test::Nginx::http_start(
+        'POST /bodylimitreject HTTP/1.1' . CRLF
+        . 'Host: localhost' . CRLF
+        . 'Content-Length: 65536' . CRLF
+        . 'Connection: close' . CRLF . CRLF);
+$unfinished->print('BODY' x 33) or die "Can't send partial body: $!";
+like(Test::Nginx::http_end($unfinished), qr/^HTTP.*403/,
+        'body limit rejects before promised upload completes');
+like(http_get('/bodyaccess'), qr/TEST-OK-IF-YOU-SEE-THIS/,
+        'worker accepts requests after early body-limit rejection');
 
 ###############################################################################
 

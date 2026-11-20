@@ -5,7 +5,7 @@
 [![](https://raw.githubusercontent.com/ZenHubIO/support/master/zenhub-badge.png)](https://zenhub.com)
 
 
-The ModSecurity-nginx connector is the connection point between nginx and libmodsecurity (ModSecurity v3). Said another way, this project provides a communication channel between nginx and libmodsecurity. This connector is required to use LibModSecurity with nginx. 
+The ModSecurity-nginx connector is the connection point between nginx and libmodsecurity (ModSecurity v3). Said another way, this project provides a communication channel between nginx and libmodsecurity. This connector is required to use LibModSecurity with nginx.
 
 The ModSecurity-nginx connector takes the form of an nginx module. The module simply serves as a layer of communication between nginx and ModSecurity.
 
@@ -176,6 +176,21 @@ using the same unique identificator.
 
 String can contain variables.
 
+### Request body buffering
+
+The connector feeds incoming body buffers to libModSecurity before Nginx saves
+them to disk. Nginx's buffering configuration and the body forwarded upstream
+are unchanged. Request-body rules still run after the complete body arrives,
+but body-limit rejection can terminate an upload earlier.
+
+If another module has already read the body, the connector inspects the saved
+body instead, reading file-backed bodies in chunks of up to 64 KiB.
+With `SecRuleEngine DetectionOnly` and `SecRequestBodyLimitAction Reject`,
+libModSecurity can discard the whole append crossing `SecRequestBodyLimit`
+without blocking the request; the inspected prefix can therefore vary with
+buffer boundaries. Use `SecRequestBodyLimitAction ProcessPartial` to inspect
+the prefix up to the configured limit.
+
 
 # Contributing
 
@@ -194,7 +209,7 @@ here: https://help.github.com/articles/using-pull-requests/
 Please respect the coding style in use. Pull requests can include various commits, so
 provide one fix or one functionality per commit. Do not change anything outside
 the scope of your target work (e.g. coding style in a function that you have
-passed by). 
+passed by).
 
 ### Don’t know where to start?
 
@@ -211,9 +226,9 @@ You may also take a look at recent bug reports and open issues to get an idea of
 ### Testing your patch
 
 Along with the manual testing, we strongly recommend that you to use the nginx test
-utility to make sure that you patch does not adversely affect the behavior or performance of nginx. 
+utility to make sure that you patch does not adversely affect the behavior or performance of nginx.
 
-The nginx tests are available on: http://hg.nginx.org/nginx-tests/ 
+The nginx tests are available on: http://hg.nginx.org/nginx-tests/
 
 To use those tests, make sure you have the Perl utility prove (part of Perl 5)
 and proceed with the following commands:
@@ -226,7 +241,7 @@ $ TEST_NGINX_BINARY=/path/to/your/nginx prove .
 
 If you are facing problems getting your added functionality to pass all the nginx tests, feel free to contact us or the nginx mailing list at: http://nginx.org/en/support.html
 
-### Debugging 
+### Debugging
 
 We respect the nginx debugging schema. By using the configuration option
 "--with-debug" during the nginx configuration you will also be enabling the
@@ -262,5 +277,4 @@ feel free to open GitHub issues requesting for new features. Before opening a ne
 
 Having our packages in distros on time is something we highly desire. Let us know if
 there is anything we can do to facilitate your work as a packager.
-
 
