@@ -26,13 +26,13 @@ static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
 
 
 static ngx_inline void
-ngx_http_modsecurity_add_response_header(ngx_http_modsecurity_ctx_t *ctx, ngx_str_t *name, ngx_str_t *value)
+ngx_http_modsecurity_add_response_header(ngx_http_modsecurity_ctx_t *ctx, const ngx_str_t *name, const ngx_str_t *value)
 {
     /* This helper returns void; callers do not need to check a status code. msc_add_n_response_header always return 1. */
-    msc_add_n_response_header(ctx->modsec_transaction,
-        (const unsigned char *) name->data,
+    (void) msc_add_n_response_header(ctx->modsec_transaction,
+        name->data,
         name->len,
-        (const unsigned char *) value->data,
+        value->data,
         value->len);
 }
 
@@ -40,11 +40,11 @@ ngx_http_modsecurity_add_response_header(ngx_http_modsecurity_ctx_t *ctx, ngx_st
 static void
 ngx_http_modsecurity_resolv_header_server(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    static char ngx_http_server_full_string[] = NGINX_VER;
-    static char ngx_http_server_string[] = "nginx";
+    static const ngx_str_t server_full = ngx_string(NGINX_VER);
+    static const ngx_str_t server_short = ngx_string("nginx");
 
-    ngx_http_core_loc_conf_t *clcf = NULL;
-    ngx_str_t value;
+    ngx_http_core_loc_conf_t *clcf;
+    const ngx_str_t *value;
 
     if (r->headers_out.server != NULL) {
         return;
@@ -52,15 +52,9 @@ ngx_http_modsecurity_resolv_header_server(ngx_http_request_t *r, ngx_http_modsec
 
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
 
-    if (clcf->server_tokens) {
-        value.data = (u_char *)ngx_http_server_full_string;
-        value.len = sizeof(ngx_http_server_full_string) - 1;
-    } else {
-        value.data = (u_char *)ngx_http_server_string;
-        value.len = sizeof(ngx_http_server_string) - 1;
-    }
+    value = clcf->server_tokens ? &server_full : &server_short;
 
-    ngx_http_modsecurity_add_response_header(ctx, &name, &value);
+    ngx_http_modsecurity_add_response_header(ctx, &name, value);
 }
 
 
@@ -84,13 +78,13 @@ static void
 ngx_http_modsecurity_resolv_header_content_length(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
     ngx_str_t value;
-    char buf[NGX_OFF_T_LEN];
+    u_char buf[NGX_OFF_T_LEN];
 
     if (r->headers_out.content_length == NULL
         && r->headers_out.content_length_n >= 0)
     {
-        value.len = (int)(ngx_sprintf((u_char *)buf, "%O", r->headers_out.content_length_n) - (u_char *)buf);
-        value.data = (unsigned char *)buf;
+        value.data = buf;
+        value.len = ngx_sprintf(buf, "%O", r->headers_out.content_length_n) - buf;
 
         ngx_http_modsecurity_add_response_header(ctx, &name, &value);
     }
@@ -109,32 +103,30 @@ ngx_http_modsecurity_resolv_header_content_type(ngx_http_request_t *r, ngx_http_
 static void
 ngx_http_modsecurity_resolv_header_last_modified(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    u_char buf[sizeof("Mon, 28 Sep 1970 06:00:00 GMT")], *p;
+    u_char buf[sizeof("Mon, 28 Sep 1970 06:00:00 GMT") -1];
     ngx_str_t value;
 
-    if (r->headers_out.last_modified_time == -1) {
+    if (r->headers_out.last_modified != NULL
+        || r->headers_out.last_modified_time == -1)
+    {
         return;
     }
 
-    p = ngx_http_time(buf, r->headers_out.last_modified_time);
-
     value.data = buf;
-    value.len = (int)(p-buf);
+    value.len = ngx_http_time(buf, r->headers_out.last_modified_time) - buf;
 
     ngx_http_modsecurity_add_response_header(ctx, &name, &value);
 }
 
-static ngx_str_t ngx_http_modsecurity_connection_close = ngx_string("close");
-static ngx_str_t ngx_http_modsecurity_connection_upgrade = ngx_string("upgrade");
-static ngx_str_t ngx_http_modsecurity_connection_keepalive = ngx_string("keep-alive");
+static const ngx_str_t ngx_http_modsecurity_connection_close = ngx_string("close");
+static const ngx_str_t ngx_http_modsecurity_connection_upgrade = ngx_string("upgrade");
+static const ngx_str_t ngx_http_modsecurity_connection_keepalive = ngx_string("keep-alive");
 
 
 static void
 ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    ngx_http_core_loc_conf_t *clcf = NULL;
-    ngx_str_t connection;
-    ngx_str_t value;
+    ngx_http_core_loc_conf_t *clcf;
 
 #ifdef NGX_HTTP_VERSION_20
     if (r->http_version == NGX_HTTP_VERSION_20) {
@@ -148,28 +140,54 @@ ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_http_mo
 #endif
 
     if (r->headers_out.status == NGX_HTTP_SWITCHING_PROTOCOLS) {
-        connection = ngx_http_modsecurity_connection_upgrade;
-    } else if (r->keepalive) {
-        connection = ngx_http_modsecurity_connection_keepalive;
+        ngx_http_modsecurity_add_response_header(
+            ctx, &name,
+            &ngx_http_modsecurity_connection_upgrade);
 
-        clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
-        if (clcf->keepalive_header)
-        {
-            u_char buf[sizeof("timeout=") - 1 + NGX_TIME_T_LEN];
-            ngx_str_t name2 = ngx_string("Keep-Alive");
-
-            value.data = buf;
-            value.len = ngx_sprintf(buf, "timeout=%T",
-                clcf->keepalive_header) - buf;
-
-            ngx_http_modsecurity_add_response_header(ctx, &name2, &value);
-        }
-    } else {
-        connection = ngx_http_modsecurity_connection_close;
+        return;
     }
 
-    ngx_http_modsecurity_add_response_header(ctx, &name, &connection);
+    if (!r->keepalive) {
+        ngx_http_modsecurity_add_response_header(
+            ctx, &name,
+            &ngx_http_modsecurity_connection_close);
+
+        return;
+    }
+
+    /*
+     * The upgrade and close cases returned above, so NGINX will
+     * generate a keep-alive Connection header for this response.
+     */
+    ngx_http_modsecurity_add_response_header(
+        ctx,
+        &name,
+        &ngx_http_modsecurity_connection_keepalive);
+
+    /*
+     * Keep-Alive is a separate header and is generated only when
+     * keepalive_header is configured.
+     */
+    clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
+
+    if (clcf->keepalive_header != 0) {
+        u_char    buf[sizeof("timeout=") - 1 + NGX_TIME_T_LEN];
+        ngx_str_t keep_alive_name = ngx_string("Keep-Alive");
+        ngx_str_t value;
+
+        value.data = buf;
+        value.len = ngx_sprintf(
+            buf,
+            "timeout=%T",
+            clcf->keepalive_header) - buf;
+
+        ngx_http_modsecurity_add_response_header(
+            ctx,
+            &keep_alive_name,
+            &value);
+    }
 }
+
 
 static void
 ngx_http_modsecurity_resolv_header_transfer_encoding(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
@@ -195,12 +213,11 @@ static void
 ngx_http_modsecurity_resolv_header_vary(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
 #if (NGX_HTTP_GZIP)
-    ngx_http_core_loc_conf_t *clcf = NULL;
+    static const ngx_str_t value = ngx_string("Accept-Encoding");
+    ngx_http_core_loc_conf_t *clcf;
 
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
     if (r->gzip_vary && clcf->gzip_vary) {
-        ngx_str_t value = ngx_string("Accept-Encoding");
-
         ngx_http_modsecurity_add_response_header(ctx, &name, &value);
     }
 #endif
@@ -223,9 +240,9 @@ ngx_http_modsecurity_header_filter(ngx_http_request_t *r)
     ngx_list_part_t *part = &r->headers_out.headers.part;
     ngx_table_elt_t *data = part->elts;
     ngx_uint_t i = 0;
-    int ret = 0;
+    ngx_int_t ret = 0;
     ngx_uint_t status;
-    char *http_response_ver;
+    const char *http_response_ver;
 
 
 /* XXX: if NOT_MODIFIED, do we need to process it at all?  see xslt_header_filter() */
