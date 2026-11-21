@@ -26,13 +26,13 @@ static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
 
 
 static ngx_inline void
-ngx_http_modsecurity_add_response_header(ngx_http_modsecurity_ctx_t *ctx, ngx_str_t *name, ngx_str_t *value)
+ngx_http_modsecurity_add_response_header(ngx_http_modsecurity_ctx_t *ctx, const ngx_str_t *name, const ngx_str_t *value)
 {
     /* This helper returns void; callers do not need to check a status code. msc_add_n_response_header always return 1. */
-    msc_add_n_response_header(ctx->modsec_transaction,
-        (const unsigned char *) name->data,
+    (void) msc_add_n_response_header(ctx->modsec_transaction,
+        name->data,
         name->len,
-        (const unsigned char *) value->data,
+        value->data,
         value->len);
 }
 
@@ -84,13 +84,13 @@ static void
 ngx_http_modsecurity_resolv_header_content_length(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
     ngx_str_t value;
-    char buf[NGX_OFF_T_LEN];
+    u_char buf[NGX_OFF_T_LEN];
 
     if (r->headers_out.content_length == NULL
         && r->headers_out.content_length_n >= 0)
     {
-        value.len = (int)(ngx_sprintf((u_char *)buf, "%O", r->headers_out.content_length_n) - (u_char *)buf);
-        value.data = (unsigned char *)buf;
+        value.data = buf;
+        value.len = ngx_sprintf(buf, "%O", r->headers_out.content_length_n) - buf;
 
         ngx_http_modsecurity_add_response_header(ctx, &name, &value);
     }
@@ -109,7 +109,7 @@ ngx_http_modsecurity_resolv_header_content_type(ngx_http_request_t *r, ngx_http_
 static void
 ngx_http_modsecurity_resolv_header_last_modified(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    u_char buf[sizeof("Mon, 28 Sep 1970 06:00:00 GMT") -1], *p;
+    u_char buf[sizeof("Mon, 28 Sep 1970 06:00:00 GMT") -1];
     ngx_str_t value;
 
     if (r->headers_out.last_modified != NULL
@@ -118,17 +118,15 @@ ngx_http_modsecurity_resolv_header_last_modified(ngx_http_request_t *r, ngx_http
         return;
     }
 
-    p = ngx_http_time(buf, r->headers_out.last_modified_time);
-
     value.data = buf;
-    value.len = p - buf;
+    value.len = ngx_http_time(buf, r->headers_out.last_modified_time) - buf;
 
     ngx_http_modsecurity_add_response_header(ctx, &name, &value);
 }
 
-static ngx_str_t ngx_http_modsecurity_connection_close = ngx_string("close");
-static ngx_str_t ngx_http_modsecurity_connection_upgrade = ngx_string("upgrade");
-static ngx_str_t ngx_http_modsecurity_connection_keepalive = ngx_string("keep-alive");
+static const ngx_str_t ngx_http_modsecurity_connection_close = ngx_string("close");
+static const ngx_str_t ngx_http_modsecurity_connection_upgrade = ngx_string("upgrade");
+static const ngx_str_t ngx_http_modsecurity_connection_keepalive = ngx_string("keep-alive");
 
 
 static void
@@ -249,9 +247,9 @@ ngx_http_modsecurity_header_filter(ngx_http_request_t *r)
     ngx_list_part_t *part = &r->headers_out.headers.part;
     ngx_table_elt_t *data = part->elts;
     ngx_uint_t i = 0;
-    int ret = 0;
+    ngx_int_t ret = 0;
     ngx_uint_t status;
-    char *http_response_ver;
+    const char *http_response_ver;
 
 
 /* XXX: if NOT_MODIFIED, do we need to process it at all?  see xslt_header_filter() */
