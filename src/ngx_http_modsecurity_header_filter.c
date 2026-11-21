@@ -247,8 +247,7 @@ ngx_http_modsecurity_header_filter(ngx_http_request_t *r)
 /* XXX: can it happen ?  already processed i mean */
 /* XXX: check behaviour on 'ModSecurity off' */
 
-    if (ctx->processed)
-    {
+    if (ctx->response_headers_processed) {
         /*
          * FIXME: verify if this request is already processed.
          */
@@ -263,7 +262,7 @@ ngx_http_modsecurity_header_filter(ngx_http_request_t *r)
      */
     r->filter_need_in_memory = 1;
 
-    ctx->processed = 1;
+    ctx->response_headers_processed = 1;
     /*
      * Assuming ModSecurity module is running immediately before the
      * ngx_http_header_filter, we will be able to populate ModSecurity with
