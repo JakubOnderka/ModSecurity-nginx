@@ -182,7 +182,7 @@ ngx_http_modsecurity_rewrite_handler(ngx_http_request_t *r)
             if (http_version == NULL) {
                 return NGX_HTTP_INTERNAL_SERVER_ERROR;
             }
-            if ((strlen(http_version) > 5) && (!strncmp("HTTP/", http_version, 5))) {
+            if (r->http_protocol.len > 5 && !strncmp("HTTP/", http_version, 5)) {
                 http_version += 5;
             } else {
                 http_version = "1.0";
