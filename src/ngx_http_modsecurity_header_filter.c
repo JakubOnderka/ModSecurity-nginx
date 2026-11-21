@@ -40,11 +40,11 @@ ngx_http_modsecurity_add_response_header(ngx_http_modsecurity_ctx_t *ctx, const 
 static void
 ngx_http_modsecurity_resolv_header_server(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    static char ngx_http_server_full_string[] = NGINX_VER;
-    static char ngx_http_server_string[] = "nginx";
+    static const ngx_str_t ngx_http_modsecurity_server_full = ngx_string(NGINX_VER);
+    static const ngx_str_t ngx_http_modsecurity_server_short = ngx_string("nginx");
 
-    ngx_http_core_loc_conf_t *clcf = NULL;
-    ngx_str_t value;
+    ngx_http_core_loc_conf_t *clcf;
+    const ngx_str_t *value;
 
     if (r->headers_out.server != NULL) {
         return;
@@ -52,15 +52,11 @@ ngx_http_modsecurity_resolv_header_server(ngx_http_request_t *r, ngx_http_modsec
 
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
 
-    if (clcf->server_tokens) {
-        value.data = (u_char *)ngx_http_server_full_string;
-        value.len = sizeof(ngx_http_server_full_string) - 1;
-    } else {
-        value.data = (u_char *)ngx_http_server_string;
-        value.len = sizeof(ngx_http_server_string) - 1;
-    }
+    value = clcf->server_tokens
+        ? &ngx_http_modsecurity_server_full
+        : &ngx_http_modsecurity_server_short;
 
-    ngx_http_modsecurity_add_response_header(ctx, &name, &value);
+    ngx_http_modsecurity_add_response_header(ctx, &name, value);
 }
 
 
