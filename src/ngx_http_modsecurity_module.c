@@ -645,6 +645,8 @@ ngx_http_modsecurity_create_main_conf(ngx_conf_t *cf)
 
     cln = ngx_pool_cleanup_add(cf->pool, 0);
     if (cln == NULL) {
+        msc_cleanup(conf->modsec);
+        conf->modsec = NULL;
         return NGX_CONF_ERROR;
     }
 
