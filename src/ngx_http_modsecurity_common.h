@@ -85,7 +85,7 @@ typedef struct {
 
 
 typedef struct {
-    void                      *pool;
+    ngx_pool_t                *pool;
     ModSecurity               *modsec;
     ngx_uint_t                 rules_inline;
     ngx_uint_t                 rules_file;
@@ -94,7 +94,7 @@ typedef struct {
 
 
 typedef struct {
-    void                      *pool;
+    ngx_pool_t                *pool;
     /* RulesSet or Rules */
     void                      *rules_set;
 
