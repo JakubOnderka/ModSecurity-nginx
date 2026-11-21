@@ -26,10 +26,10 @@ static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
 
 
 static ngx_inline void
-ngx_http_modsecurity_add_response_header(ngx_http_modsecurity_ctx_t *ctx, ngx_str_t *name, ngx_str_t *value)
+ngx_http_modsecurity_add_response_header(ngx_http_modsecurity_ctx_t *ctx, const ngx_str_t *name, const ngx_str_t *value)
 {
     /* This helper returns void; callers do not need to check a status code. msc_add_n_response_header always return 1. */
-    msc_add_n_response_header(ctx->modsec_transaction,
+    (void) msc_add_n_response_header(ctx->modsec_transaction,
         (const unsigned char *) name->data,
         name->len,
         (const unsigned char *) value->data,
