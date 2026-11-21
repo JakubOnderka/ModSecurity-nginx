@@ -24,7 +24,6 @@
 
 static ngx_http_output_body_filter_pt ngx_http_next_body_filter;
 
-/* XXX: check behaviour on few body filters installed */
 ngx_int_t
 ngx_http_modsecurity_body_filter_init(void)
 {
@@ -37,8 +36,11 @@ ngx_http_modsecurity_body_filter_init(void)
 ngx_int_t
 ngx_http_modsecurity_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 {
-    ngx_chain_t *chain = in;
-    ngx_http_modsecurity_ctx_t *ctx = NULL;
+    ngx_buf_t                   *buf;
+    ngx_chain_t                 *chain;
+    ngx_http_modsecurity_ctx_t  *ctx;
+    ngx_uint_t                   last_buf = 0;
+    int                          ret;
 
     if (in == NULL) {
         return ngx_http_next_body_filter(r, in);
@@ -49,7 +51,7 @@ ngx_http_modsecurity_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     dd("body filter, recovering ctx: %p", ctx);
 
     if (ctx == NULL) {
-        dd("ModSecurity not enabled or an error occured");
+        dd("ModSecurity not enabled or an error occurred");
         return ngx_http_next_body_filter(r, in);
     }
 
@@ -57,12 +59,12 @@ ngx_http_modsecurity_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         return ngx_http_next_body_filter(r, in);
     }
 
-    int is_request_processed = 0;
-    for (; chain != NULL; chain = chain->next) {
-        int ret;
-        if (chain->buf->pos != chain->buf->last) {
+    for (chain = in; chain != NULL; chain = chain->next) {
+        buf = chain->buf;
+
+        if (buf->pos != buf->last) {
             msc_append_response_body(ctx->modsec_transaction,
-                chain->buf->pos, chain->buf->last - chain->buf->pos);
+                buf->pos, buf->last - buf->pos);
             ret = ngx_http_modsecurity_process_intervention(ctx, r);
             if (ret > 0) {
                 return ngx_http_filter_finalize_request(r,
@@ -70,29 +72,24 @@ ngx_http_modsecurity_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
             }
         }
 
-/* XXX: chain->buf->last_buf || chain->buf->last_in_chain */
-        is_request_processed = chain->buf->last_buf;
+        last_buf = buf->last_buf;
+        if (!last_buf) {
+            continue;
+        }
 
-        if (is_request_processed) {
-            msc_process_response_body(ctx->modsec_transaction);
-
-/* XXX: I don't get how body from modsec being transferred to nginx's buffer.  If so - after adjusting of nginx's
-   XXX: body we can proceed to adjust body size (content-length).  see xslt_body_filter() for example */
-            ret = ngx_http_modsecurity_process_intervention(ctx, r);
-            if (ret > 0) {
-                return ret;
-            }
-            else if (ret < 0) {
-                return ngx_http_filter_finalize_request(r,
-                    &ngx_http_modsecurity_module, NGX_HTTP_INTERNAL_SERVER_ERROR);
-
-            }
+        msc_process_response_body(ctx->modsec_transaction);
+        ret = ngx_http_modsecurity_process_intervention(ctx, r);
+        if (ret > 0) {
+            return ret;
+        }
+        if (ret < 0) {
+            return ngx_http_filter_finalize_request(r,
+                &ngx_http_modsecurity_module, NGX_HTTP_INTERNAL_SERVER_ERROR);
         }
     }
-    if (!is_request_processed) {
+    if (!last_buf) {
         dd("buffer was not fully loaded! ctx: %p", ctx);
     }
 
-/* XXX: xflt_filter() -- return NGX_OK here */
     return ngx_http_next_body_filter(r, in);
 }
