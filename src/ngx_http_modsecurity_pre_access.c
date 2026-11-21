@@ -261,7 +261,6 @@ ngx_http_modsecurity_pre_access_handler(ngx_http_request_t *r)
             }
             chain = chain->next;
         }
-        ctx->request_body_filter_seen = 1;
 
         /**
          * At this point, all the request body was sent to ModSecurity
