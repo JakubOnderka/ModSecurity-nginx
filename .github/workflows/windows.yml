@@ -71,13 +71,13 @@ jobs:
             done
             rm -f "$archive"
           done
-      - name: Get libModSecurity source
-        uses: actions/checkout@v7
-        with:
-          repository: owasp-modsecurity/ModSecurity
-          submodules: recursive
-          path: nginx/objs/lib/ModSecurity
-          fetch-depth: 1
+      - name: Download libModSecurity source
+        working-directory: nginx
+        run: |
+          mkdir -p objs/lib/ModSecurity
+          curl -fsSL --retry 3 --retry-all-errors \
+            https://github.com/owasp-modsecurity/ModSecurity/releases/download/v3.0.17/modsecurity-v3.0.17.tar.gz \
+            | tar -xz --strip-components=1 -C objs/lib/ModSecurity
       - name: Setup Conan
         shell: cmd
         run: |
