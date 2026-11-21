@@ -402,7 +402,7 @@ ngx_conf_set_rules_remote(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     rules_remote_key = ngx_str_to_char(value[1], cf->pool);
     rules_remote_server = ngx_str_to_char(value[2], cf->pool);
 
-    if (rules_remote_key == NULL || rules_remote_key == NULL) {
+    if (rules_remote_key == NULL || rules_remote_server == NULL) {
         return NGX_CONF_ERROR;
     }
 
