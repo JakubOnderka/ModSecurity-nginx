@@ -633,21 +633,21 @@ ngx_http_modsecurity_create_main_conf(ngx_conf_t *cf)
                                     sizeof(ngx_http_modsecurity_main_conf_t));
 
     if (conf == NULL) {
-        return NGX_CONF_ERROR;
+        return NULL;
     }
 
     /* Create our ModSecurity instance */
     conf->modsec = msc_init();
     if (conf->modsec == NULL) {
         dd("failed to create the ModSecurity instance");
-        return NGX_CONF_ERROR;
+        return NULL;
     }
 
     cln = ngx_pool_cleanup_add(cf->pool, 0);
     if (cln == NULL) {
         msc_cleanup(conf->modsec);
         conf->modsec = NULL;
-        return NGX_CONF_ERROR;
+        return NULL;
     }
 
     cln->handler = ngx_http_modsecurity_cleanup_instance;
