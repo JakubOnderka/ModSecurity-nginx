@@ -78,12 +78,20 @@ jobs:
           curl -fsSL --retry 3 --retry-all-errors \
             https://github.com/owasp-modsecurity/ModSecurity/releases/download/v3.0.17/modsecurity-v3.0.17.tar.gz \
             | tar -xz --strip-components=1 -C objs/lib/ModSecurity
+      - name: Restore libModSecurity build
+        id: cache-modsecurity
+        uses: actions/cache@v6
+        with:
+          path: nginx/objs/lib/ModSecurity/build/win32/build/Release
+          key: modsecurity-v3.0.17-windows-2022-msvc-release-x64-v1
       - name: Setup Conan
+        if: steps.cache-modsecurity.outputs.cache-hit != 'true'
         shell: cmd
         run: |
           pip3 install conan --upgrade
           conan profile detect
       - name: Build libModSecurity
+        if: steps.cache-modsecurity.outputs.cache-hit != 'true'
         working-directory: nginx/objs/lib/ModSecurity
         shell: cmd
         run: |
