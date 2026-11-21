@@ -40,8 +40,7 @@ ngx_http_modsecurity_set_hostname(ngx_http_modsecurity_ctx_t *ctx, ngx_http_requ
         hostname = r->headers_in.server;
     } else {
         // otherwise we try to use the server config, namely the
-        // server_name $SERVER_NAME
-        // directive
+        // server_name $SERVER_NAME directive
         // for eg. in default config, server_name is "_"
         // possible all requests without a Host header will be
         // handled by this server block
@@ -69,8 +68,12 @@ ngx_http_modsecurity_set_hostname(ngx_http_modsecurity_ctx_t *ctx, ngx_http_requ
         }
     }
 
-    // set the hostname in the transaction
-    // this function is only available in ModSecurity 3.0.13 and later
+    /*
+     * set the hostname in the transaction
+     * this function is only available in ModSecurity 3.0.13 and later
+     * msc_set_request_hostname() copies the supplied value into the
+     * transaction, so a request-local stack buffer is sufficient here.
+    */
     msc_set_request_hostname(ctx->modsec_transaction, (const unsigned char *)hostname_char);
 #endif
     return NGX_OK;
