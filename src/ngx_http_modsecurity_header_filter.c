@@ -132,8 +132,7 @@ static ngx_str_t ngx_http_modsecurity_connection_keepalive = ngx_string("keep-al
 static void
 ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    ngx_http_core_loc_conf_t *clcf = NULL;
-    ngx_str_t connection;
+    ngx_http_core_loc_conf_t *clcf;
     ngx_str_t value;
 
 #ifdef NGX_HTTP_VERSION_20
@@ -148,28 +147,54 @@ ngx_http_modsecurity_resolv_header_connection(ngx_http_request_t *r, ngx_http_mo
 #endif
 
     if (r->headers_out.status == NGX_HTTP_SWITCHING_PROTOCOLS) {
-        connection = ngx_http_modsecurity_connection_upgrade;
-    } else if (r->keepalive) {
-        connection = ngx_http_modsecurity_connection_keepalive;
+        ngx_http_modsecurity_add_response_header(
+            ctx, &name,
+            &ngx_http_modsecurity_connection_upgrade);
 
-        clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
-        if (clcf->keepalive_header)
-        {
-            u_char buf[sizeof("timeout=") - 1 + NGX_TIME_T_LEN];
-            ngx_str_t name2 = ngx_string("Keep-Alive");
-
-            value.data = buf;
-            value.len = ngx_sprintf(buf, "timeout=%T",
-                clcf->keepalive_header) - buf;
-
-            ngx_http_modsecurity_add_response_header(ctx, &name2, &value);
-        }
-    } else {
-        connection = ngx_http_modsecurity_connection_close;
+        return;
     }
 
-    ngx_http_modsecurity_add_response_header(ctx, &name, &connection);
+    if (!r->keepalive) {
+        ngx_http_modsecurity_add_response_header(
+            ctx, &name,
+            &ngx_http_modsecurity_connection_close);
+
+        return;
+    }
+
+    /*
+     * The upgrade and close cases returned above, so NGINX will
+     * generate a keep-alive Connection header for this response.
+     */
+    ngx_http_modsecurity_add_response_header(
+        ctx,
+        &name,
+        &ngx_http_modsecurity_connection_keepalive);
+
+    /*
+     * Keep-Alive is a separate header and is generated only when
+     * keepalive_header is configured.
+     */
+    clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
+
+    if (clcf->keepalive_header != 0) {
+        u_char    buf[sizeof("timeout=") - 1 + NGX_TIME_T_LEN];
+        ngx_str_t keep_alive_name = ngx_string("Keep-Alive");
+        ngx_str_t value;
+
+        value.data = buf;
+        value.len = ngx_sprintf(
+            buf,
+            "timeout=%T",
+            clcf->keepalive_header) - buf;
+
+        ngx_http_modsecurity_add_response_header(
+            ctx,
+            &keep_alive_name,
+            &value);
+    }
 }
+
 
 static void
 ngx_http_modsecurity_resolv_header_transfer_encoding(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
