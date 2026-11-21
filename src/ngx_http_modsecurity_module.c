@@ -621,14 +621,6 @@ ngx_http_modsecurity_create_main_conf(ngx_conf_t *cf)
     ngx_pool_cleanup_t                *cln;
     ngx_http_modsecurity_main_conf_t  *conf;
 
-    conf = (ngx_http_modsecurity_main_conf_t *) ngx_pcalloc(cf->pool,
-                                    sizeof(ngx_http_modsecurity_main_conf_t));
-
-    if (conf == NULL)
-    {
-        return NGX_CONF_ERROR;
-    }
-
     /*
      * set by ngx_pcalloc():
      *
@@ -638,6 +630,19 @@ ngx_http_modsecurity_create_main_conf(ngx_conf_t *cf)
      *     conf->rules_file = 0;
      *     conf->rules_remote = 0;
      */
+    conf = (ngx_http_modsecurity_main_conf_t *) ngx_pcalloc(cf->pool,
+                                    sizeof(ngx_http_modsecurity_main_conf_t));
+
+    if (conf == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    /* Create our ModSecurity instance */
+    conf->modsec = msc_init();
+    if (conf->modsec == NULL) {
+        dd("failed to create the ModSecurity instance");
+        return NGX_CONF_ERROR;
+    }
 
     cln = ngx_pool_cleanup_add(cf->pool, 0);
     if (cln == NULL) {
@@ -648,14 +653,6 @@ ngx_http_modsecurity_create_main_conf(ngx_conf_t *cf)
     cln->data = conf;
 
     conf->pool = cf->pool;
-
-    /* Create our ModSecurity instance */
-    conf->modsec = msc_init();
-    if (conf->modsec == NULL)
-    {
-        dd("failed to create the ModSecurity instance");
-        return NGX_CONF_ERROR;
-    }
 
     /* Provide our connector information to LibModSecurity */
     msc_set_connector_info(conf->modsec, MODSECURITY_NGINX_WHOAMI);
