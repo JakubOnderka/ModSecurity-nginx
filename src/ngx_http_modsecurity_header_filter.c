@@ -109,17 +109,16 @@ ngx_http_modsecurity_resolv_header_content_type(ngx_http_request_t *r, ngx_http_
 static void
 ngx_http_modsecurity_resolv_header_last_modified(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    u_char buf[sizeof("Mon, 28 Sep 1970 06:00:00 GMT")], *p;
+    u_char buf[sizeof("Mon, 28 Sep 1970 06:00:00 GMT") - 1];
     ngx_str_t value;
 
-    if (r->headers_out.last_modified_time == -1) {
+    if (r->headers_out.last_modified != NULL
+        || r->headers_out.last_modified_time == -1) {
         return;
     }
 
-    p = ngx_http_time(buf, r->headers_out.last_modified_time);
-
     value.data = buf;
-    value.len = (int)(p-buf);
+    value.len = ngx_http_time(buf, r->headers_out.last_modified_time) - buf;
 
     ngx_http_modsecurity_add_response_header(ctx, &name, &value);
 }
