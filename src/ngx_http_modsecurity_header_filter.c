@@ -40,8 +40,8 @@ ngx_http_modsecurity_add_response_header(ngx_http_modsecurity_ctx_t *ctx, const 
 static void
 ngx_http_modsecurity_resolv_header_server(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
-    static const ngx_str_t ngx_http_modsecurity_server_full = ngx_string(NGINX_VER);
-    static const ngx_str_t ngx_http_modsecurity_server_short = ngx_string("nginx");
+    static const ngx_str_t server_full = ngx_string(NGINX_VER);
+    static const ngx_str_t server_short = ngx_string("nginx");
 
     ngx_http_core_loc_conf_t *clcf;
     const ngx_str_t *value;
@@ -52,9 +52,7 @@ ngx_http_modsecurity_resolv_header_server(ngx_http_request_t *r, ngx_http_modsec
 
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
 
-    value = clcf->server_tokens
-        ? &ngx_http_modsecurity_server_full
-        : &ngx_http_modsecurity_server_short;
+    value = clcf->server_tokens ? &server_full : &server_short;
 
     ngx_http_modsecurity_add_response_header(ctx, &name, value);
 }
@@ -215,12 +213,11 @@ static void
 ngx_http_modsecurity_resolv_header_vary(ngx_http_request_t *r, ngx_http_modsecurity_ctx_t *ctx, ngx_str_t name)
 {
 #if (NGX_HTTP_GZIP)
-    ngx_http_core_loc_conf_t *clcf = NULL;
+    static const ngx_str_t value = ngx_string("Accept-Encoding");
+    ngx_http_core_loc_conf_t *clcf;
 
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
     if (r->gzip_vary && clcf->gzip_vary) {
-        ngx_str_t value = ngx_string("Accept-Encoding");
-
         ngx_http_modsecurity_add_response_header(ctx, &name, &value);
     }
 #endif
