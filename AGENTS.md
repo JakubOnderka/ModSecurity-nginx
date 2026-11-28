@@ -46,7 +46,8 @@ MODSECURITY_INC="$WORK/modsecurity-install/include" \
 MODSECURITY_LIB="$WORK/modsecurity-install/lib" \
   ./configure --with-http_v2_module --with-http_v3_module \
   --with-http_ssl_module --with-http_auth_request_module \
-  --add-module="$CONNECTOR"
+  --without-http_gzip_module --add-module="$CONNECTOR" \
+  --add-module="$CONNECTOR/tests"
 make -j 4
 ```
 
